@@ -58,7 +58,11 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
 - Default actions are merged using the same restrictiveness comparison as
   syscalls.
 - Architectures: intersection keeps only architectures present in all profiles;
-  union combines all. An empty architecture list means "all architectures".
+  union combines all. An empty architecture list is treated as "unspecified" and
+  defers to the other profile. Per the OCI runtime-spec, empty means "native
+  architecture only", but the native architecture is unknown at merge time.
+  Callers that need precise architecture intersection should populate the native
+  architecture explicitly before merging.
 - Flags: intersection keeps only flags present in all profiles; union combines
   all. An empty flag list means "no flags".
 - Argument filters: during intersection, non-identical argument filters result
@@ -66,6 +70,8 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   filters from both sides are combined. When only one side has argument filters,
   intersection keeps them and union drops them.
 - `DefaultErrnoRet` is taken from whichever profile's default action is selected.
+  When both profiles share the same action, the earlier (leftmost) profile's
+  `DefaultErrnoRet` wins. The same applies to per-syscall `ErrnoRet`.
 - `ListenerPath` and `ListenerMetadata` are taken from the first profile.
 
 **Action restrictiveness ordering** (most to least restrictive):
@@ -111,7 +117,10 @@ per path (AND for intersection, OR for union), and collapsed back into
 read-only, write-only, and read-write lists. A read-write path intersected with
 a read-only path becomes read-only (only the shared permission survives). A
 read-only path in one profile and write-only in the other is dropped on
-intersection (no shared permissions) but becomes read-write on union.
+intersection (no shared permissions) but becomes read-write on union. When two
+non-nil filesystem rule sets produce no overlapping paths after intersection, the
+result is a non-nil empty `FilesystemRules` (preserving the nil-vs-empty
+distinction).
 
 ## Usage
 

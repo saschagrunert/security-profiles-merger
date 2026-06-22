@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 )
 
 var (
@@ -205,7 +204,7 @@ func (intersectStrategy) mergeStrings(left, right []string) []string {
 		}
 	}
 
-	sort.Strings(result)
+	slices.Sort(result)
 
 	return result
 }
@@ -261,7 +260,7 @@ func (unionStrategy) mergeStrings(left, right []string) []string {
 		}
 	}
 
-	sort.Strings(result)
+	slices.Sort(result)
 
 	return result
 }
@@ -355,13 +354,9 @@ func collapseFsPerms(perms map[string]fsPermission) *FilesystemRules {
 		}
 	}
 
-	sort.Strings(readOnly)
-	sort.Strings(writeOnly)
-	sort.Strings(readWrite)
-
-	if len(readOnly) == 0 && len(writeOnly) == 0 && len(readWrite) == 0 {
-		return nil
-	}
+	slices.Sort(readOnly)
+	slices.Sort(writeOnly)
+	slices.Sort(readWrite)
 
 	return &FilesystemRules{
 		ReadOnlyPaths:  readOnly,
