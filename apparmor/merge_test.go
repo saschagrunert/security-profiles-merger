@@ -63,9 +63,22 @@ func TestIntersectSingleProfile(t *testing.T) {
 	t.Parallel()
 
 	profile := &apparmor.Profile{
-		Executable: nil,
-		Filesystem: nil,
-		Network:    nil,
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinBash},
+			AllowedLibraries:   []string{pathLibC},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathVarLog},
+			ReadWritePaths: nil,
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: boolPtr(true),
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: boolPtr(false),
+				AllowUDP: boolPtr(true),
+			},
+		},
 		Capabilities: &apparmor.CapabilityRules{
 			AllowedCapabilities: []string{capNetAdmin, capSysTime},
 		},
@@ -78,6 +91,18 @@ func TestIntersectSingleProfile(t *testing.T) {
 
 	if len(result.Capabilities.AllowedCapabilities) != 2 {
 		t.Errorf("expected 2 capabilities, got %d", len(result.Capabilities.AllowedCapabilities))
+	}
+
+	if len(result.Executable.AllowedExecutables) != 1 {
+		t.Errorf("expected 1 executable, got %d", len(result.Executable.AllowedExecutables))
+	}
+
+	if len(result.Filesystem.ReadOnlyPaths) != 1 {
+		t.Errorf("expected 1 read-only path, got %d", len(result.Filesystem.ReadOnlyPaths))
+	}
+
+	if !*result.Network.AllowRaw {
+		t.Error("AllowRaw should be true")
 	}
 }
 
@@ -876,6 +901,49 @@ func TestUnionBoolOneNil(t *testing.T) {
 
 	if result.Network.Protocols.AllowUDP == nil || !*result.Network.Protocols.AllowUDP {
 		t.Error("AllowUDP should be true (left nil, right true)")
+	}
+}
+
+func TestIntersectBoolBothNil(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: nil,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: nil,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: nil,
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: nil,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: nil,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Network.AllowRaw != nil {
+		t.Error("AllowRaw should be nil when both inputs are nil")
+	}
+
+	if result.Network.Protocols.AllowTCP != nil {
+		t.Error("AllowTCP should be nil when both inputs are nil")
 	}
 }
 

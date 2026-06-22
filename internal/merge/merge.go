@@ -17,7 +17,10 @@ limitations under the License.
 // Package merge provides shared utilities for security profile merge operations.
 package merge
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 var (
 	// ErrNoProfiles is returned when no profiles are provided.
@@ -50,6 +53,18 @@ func IntersectSlice[T comparable](left, right []T) []T {
 
 // UnionSlice returns all unique elements from left and right, preserving order.
 func UnionSlice[T comparable](left, right []T) []T {
+	if len(left) == 0 && len(right) == 0 {
+		return nil
+	}
+
+	if len(left) == 0 {
+		return slices.Clone(right)
+	}
+
+	if len(right) == 0 {
+		return slices.Clone(left)
+	}
+
 	seen := make(map[T]struct{})
 
 	var result []T

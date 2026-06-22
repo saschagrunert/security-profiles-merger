@@ -1171,6 +1171,75 @@ func TestIntersectOneHasArgsReverse(t *testing.T) {
 	t.Error("clone not found in result")
 }
 
+func TestMergeErrnoRetLeftNilWhenActionsEqual(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: nil,
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: uintPtr(42),
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.DefaultErrnoRet != nil {
+		t.Errorf(
+			"DefaultErrnoRet = %v, want nil (leftmost wins when actions are equal)",
+			*result.DefaultErrnoRet,
+		)
+	}
+}
+
+func TestUnmatchedSyscallClearsErrnoRetOnActionChange(t *testing.T) {
+	t.Parallel()
+
+	// Left has "read" at ActAllow+ErrnoRet=42, default ActKillProcess.
+	// Right has default ActErrno, no "read" entry.
+	// Intersect: effective = MoreRestrictive(ActAllow, ActErrno) = ActErrno.
+	// Since ActErrno != ActAllow, ErrnoRet must be cleared.
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKillProcess,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow, ErrnoRet: uintPtr(42)},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallRead) {
+			if syscall.Action != specs.ActErrno {
+				t.Errorf("read action = %q, want %q", syscall.Action, specs.ActErrno)
+			}
+
+			if syscall.ErrnoRet != nil {
+				t.Errorf(
+					"read ErrnoRet = %v, want nil (action came from other default)",
+					*syscall.ErrnoRet,
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("read not found in result")
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 

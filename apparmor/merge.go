@@ -71,10 +71,15 @@ func foldProfiles(profiles []*Profile, mergeStrategy strategy) (*Profile, error)
 		}
 	}
 
-	result := cloneProfile(profiles[0])
+	var result *Profile
+	if len(profiles) == 1 {
+		result = cloneProfile(profiles[0])
+	} else {
+		result = mergeTwo(profiles[0], profiles[1], mergeStrategy)
 
-	for idx := 1; idx < len(profiles); idx++ {
-		result = mergeTwo(result, profiles[idx], mergeStrategy)
+		for idx := 2; idx < len(profiles); idx++ {
+			result = mergeTwo(result, profiles[idx], mergeStrategy)
+		}
 	}
 
 	sortProfile(result)
@@ -300,7 +305,8 @@ func (perm fsPermission) union(other fsPermission) fsPermission {
 }
 
 func expandFsPerms(rules *FilesystemRules) map[string]fsPermission {
-	perms := make(map[string]fsPermission)
+	capacity := len(rules.ReadOnlyPaths) + len(rules.WriteOnlyPaths) + len(rules.ReadWritePaths)
+	perms := make(map[string]fsPermission, capacity)
 
 	for _, path := range rules.ReadOnlyPaths {
 		entry := perms[path]
@@ -315,7 +321,10 @@ func expandFsPerms(rules *FilesystemRules) map[string]fsPermission {
 	}
 
 	for _, path := range rules.ReadWritePaths {
-		perms[path] = fsPermission{read: true, write: true}
+		entry := perms[path]
+		entry.read = true
+		entry.write = true
+		perms[path] = entry
 	}
 
 	return perms
