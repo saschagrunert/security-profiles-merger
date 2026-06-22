@@ -19,6 +19,7 @@ package merge
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -28,6 +29,36 @@ var (
 	// ErrNilProfile is returned when a nil profile is provided.
 	ErrNilProfile = errors.New("profile must not be nil")
 )
+
+// Fold validates and merges a slice of profiles using pairwise reduction.
+// A single profile is cloned; two or more are merged left to right.
+func Fold[T any](
+	profiles []*T,
+	clone func(*T) *T,
+	merge func(*T, *T) *T,
+) (*T, error) {
+	if len(profiles) == 0 {
+		return nil, ErrNoProfiles
+	}
+
+	for idx, profile := range profiles {
+		if profile == nil {
+			return nil, fmt.Errorf("profile at index %d: %w", idx, ErrNilProfile)
+		}
+	}
+
+	if len(profiles) == 1 {
+		return clone(profiles[0]), nil
+	}
+
+	result := merge(profiles[0], profiles[1])
+
+	for idx := 2; idx < len(profiles); idx++ {
+		result = merge(result, profiles[idx])
+	}
+
+	return result, nil
+}
 
 // IntersectSlice returns elements present in both left and right.
 func IntersectSlice[T comparable](left, right []T) []T {
@@ -67,7 +98,7 @@ func UnionSlice[T comparable](left, right []T) []T {
 
 	seen := make(map[T]struct{})
 
-	var result []T
+	result := make([]T, 0, len(left)+len(right))
 
 	for _, val := range left {
 		if _, ok := seen[val]; !ok {

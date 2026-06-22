@@ -60,26 +60,12 @@ type strategy interface {
 	mergeFilesystem(left, right *FilesystemRules) *FilesystemRules
 }
 
-func foldProfiles(profiles []*Profile, mergeStrategy strategy) (*Profile, error) {
-	if len(profiles) == 0 {
-		return nil, ErrNoProfiles
-	}
-
-	for idx, profile := range profiles {
-		if profile == nil {
-			return nil, fmt.Errorf("profile at index %d: %w", idx, ErrNilProfile)
-		}
-	}
-
-	var result *Profile
-	if len(profiles) == 1 {
-		result = cloneProfile(profiles[0])
-	} else {
-		result = mergeTwo(profiles[0], profiles[1], mergeStrategy)
-
-		for idx := 2; idx < len(profiles); idx++ {
-			result = mergeTwo(result, profiles[idx], mergeStrategy)
-		}
+func foldProfiles(profiles []*Profile, s strategy) (*Profile, error) {
+	result, err := merge.Fold(profiles, cloneProfile, func(a, b *Profile) *Profile {
+		return mergeTwo(a, b, s)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fold: %w", err)
 	}
 
 	sortProfile(result)
