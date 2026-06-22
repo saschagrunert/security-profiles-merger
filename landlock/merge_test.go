@@ -1,0 +1,983 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package landlock_test
+
+import (
+	"slices"
+	"testing"
+
+	"github.com/saschagrunert/security-profiles-merger/landlock"
+)
+
+const (
+	pathEtc  = "/etc"
+	pathHome = "/home"
+	pathTmp  = "/tmp"
+	pathVar  = "/var"
+)
+
+func TestIntersectEmpty(t *testing.T) {
+	t.Parallel()
+
+	_, err := landlock.Intersect()
+	if err == nil {
+		t.Fatal("expected error for empty profiles")
+	}
+}
+
+func TestIntersectNil(t *testing.T) {
+	t.Parallel()
+
+	_, err := landlock.Intersect(nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+}
+
+func TestIntersectSingleProfile(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port:      80,
+			AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP},
+		}},
+	}
+
+	result, err := landlock.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Errorf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	if len(result.NetRules) != 1 {
+		t.Errorf("expected 1 net rule, got %d", len(result.NetRules))
+	}
+}
+
+func TestIntersectIdenticalProfiles(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	wantAccess := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func TestIntersectOverlappingPathRules(t *testing.T) {
+	t.Parallel()
+
+	handled := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+		landlock.FSAccessExecute,
+	}
+
+	left := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessExecute,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	if result.PathRules[0].Path != pathEtc {
+		t.Errorf(
+			"path = %q, want %q",
+			result.PathRules[0].Path, pathEtc,
+		)
+	}
+
+	wantAccess := []landlock.FSAccessRight{landlock.FSAccessReadFile}
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func TestIntersectDisjointPathsHandled(t *testing.T) {
+	t.Parallel()
+
+	handled := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	left := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathHome,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 0 {
+		t.Errorf(
+			"expected 0 path rules (handled by other), got %d",
+			len(result.PathRules),
+		)
+	}
+}
+
+func TestIntersectDisjointPathsUnhandled(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathHome,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 2 {
+		t.Fatalf(
+			"expected 2 path rules (not handled by other), got %d",
+			len(result.PathRules),
+		)
+	}
+}
+
+func bothNetHandled() []landlock.NetAccessRight {
+	return []landlock.NetAccessRight{
+		landlock.NetAccessBindTCP,
+		landlock.NetAccessConnectTCP,
+	}
+}
+
+func TestIntersectNetworkRules(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: bothNetHandled(),
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{
+			{Port: 80, AccessNet: bothNetHandled()},
+			{Port: 443, AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessConnectTCP,
+			}},
+		},
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: bothNetHandled(),
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{{
+			Port:      80,
+			AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP},
+		}},
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.NetRules) != 1 {
+		t.Fatalf("expected 1 net rule, got %d", len(result.NetRules))
+	}
+
+	if result.NetRules[0].Port != 80 {
+		t.Errorf("port = %d, want 80", result.NetRules[0].Port)
+	}
+
+	want := []landlock.NetAccessRight{landlock.NetAccessConnectTCP}
+	if !slices.Equal(result.NetRules[0].AccessNet, want) {
+		t.Errorf(
+			"AccessNet = %v, want %v",
+			result.NetRules[0].AccessNet, want,
+		)
+	}
+}
+
+func TestIntersectHandledAccessFSUnion(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	slices.Sort(result.HandledAccessFS)
+
+	if !slices.Equal(result.HandledAccessFS, want) {
+		t.Errorf(
+			"HandledAccessFS = %v, want %v (union for intersection)",
+			result.HandledAccessFS, want,
+		)
+	}
+}
+
+func TestIntersectThreeProfiles(t *testing.T) {
+	t.Parallel()
+
+	handled := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	first := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	second := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	third := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(first, second, third)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	wantAccess := []landlock.FSAccessRight{landlock.FSAccessReadFile}
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func TestUnionEmpty(t *testing.T) {
+	t.Parallel()
+
+	_, err := landlock.Union()
+	if err == nil {
+		t.Fatal("expected error for empty profiles")
+	}
+}
+
+func TestUnionNil(t *testing.T) {
+	t.Parallel()
+
+	_, err := landlock.Union(nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+}
+
+func TestUnionIdenticalProfiles(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Union(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	wantAccess := []landlock.FSAccessRight{landlock.FSAccessReadFile}
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func TestUnionOverlappingPathRules(t *testing.T) {
+	t.Parallel()
+
+	handled := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	left := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS:  handled,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+
+	wantAccess := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func TestUnionDisjointPathRules(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathHome,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 2 {
+		t.Fatalf(
+			"expected 2 path rules (all kept), got %d",
+			len(result.PathRules),
+		)
+	}
+}
+
+func buildUnionNetLeft() *landlock.Profile {
+	return &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: bothNetHandled(),
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{{
+			Port:      80,
+			AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP},
+		}},
+	}
+}
+
+func buildUnionNetRight() *landlock.Profile {
+	return &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: bothNetHandled(),
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{
+			{Port: 80, AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessConnectTCP,
+			}},
+			{Port: 443, AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessConnectTCP,
+			}},
+		},
+	}
+}
+
+func TestUnionNetworkRules(t *testing.T) {
+	t.Parallel()
+
+	result, err := landlock.Union(
+		buildUnionNetLeft(), buildUnionNetRight(),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.NetRules) != 2 {
+		t.Fatalf("expected 2 net rules, got %d", len(result.NetRules))
+	}
+
+	ruleMap := make(map[uint16][]landlock.NetAccessRight)
+	for _, rule := range result.NetRules {
+		ruleMap[rule.Port] = rule.AccessNet
+	}
+
+	if !slices.Equal(ruleMap[80], bothNetHandled()) {
+		t.Errorf(
+			"port 80 AccessNet = %v, want %v",
+			ruleMap[80], bothNetHandled(),
+		)
+	}
+
+	want443 := []landlock.NetAccessRight{landlock.NetAccessConnectTCP}
+	if !slices.Equal(ruleMap[443], want443) {
+		t.Errorf(
+			"port 443 AccessNet = %v, want %v",
+			ruleMap[443], want443,
+		)
+	}
+}
+
+func TestUnionHandledAccessNetIntersection(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+			landlock.NetAccessConnectTCP,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	result, err := landlock.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []landlock.NetAccessRight{landlock.NetAccessBindTCP}
+	if !slices.Equal(result.HandledAccessNet, want) {
+		t.Errorf(
+			"HandledAccessNet = %v, want %v (intersection for union)",
+			result.HandledAccessNet, want,
+		)
+	}
+}
+
+func TestNilProfileAtIndex(t *testing.T) {
+	t.Parallel()
+
+	valid := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	_, err := landlock.Intersect(valid, nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile at index 1")
+	}
+
+	_, err = landlock.Union(valid, nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile at index 1 (union)")
+	}
+}
+
+func TestMergeDoesNotMutateInputs(t *testing.T) {
+	t.Parallel()
+
+	left := buildMutationTestProfile()
+	right := buildMutationTestRight()
+
+	snap := snapshotMutationProfile(left)
+
+	_, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertMutationProfileUnchanged(t, left, &snap)
+}
+
+func buildMutationTestProfile() *landlock.Profile {
+	return &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port: 80,
+			AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+				landlock.NetAccessConnectTCP,
+			},
+		}},
+	}
+}
+
+func buildMutationTestRight() *landlock.Profile {
+	return &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port: 80,
+			AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+			},
+		}},
+	}
+}
+
+type mutationSnapshot struct {
+	handledFS  []landlock.FSAccessRight
+	handledNet []landlock.NetAccessRight
+	pathAccess []landlock.FSAccessRight
+	netAccess  []landlock.NetAccessRight
+}
+
+func snapshotMutationProfile(
+	profile *landlock.Profile,
+) mutationSnapshot {
+	return mutationSnapshot{
+		handledFS:  slices.Clone(profile.HandledAccessFS),
+		handledNet: slices.Clone(profile.HandledAccessNet),
+		pathAccess: slices.Clone(profile.PathRules[0].AccessFS),
+		netAccess:  slices.Clone(profile.NetRules[0].AccessNet),
+	}
+}
+
+func assertMutationProfileUnchanged(
+	t *testing.T,
+	profile *landlock.Profile,
+	snap *mutationSnapshot,
+) {
+	t.Helper()
+
+	if !slices.Equal(profile.HandledAccessFS, snap.handledFS) {
+		t.Error("Intersect mutated HandledAccessFS")
+	}
+
+	if !slices.Equal(profile.HandledAccessNet, snap.handledNet) {
+		t.Error("Intersect mutated HandledAccessNet")
+	}
+
+	if !slices.Equal(profile.PathRules[0].AccessFS, snap.pathAccess) {
+		t.Error("Intersect mutated PathRules AccessFS")
+	}
+
+	if !slices.Equal(profile.NetRules[0].AccessNet, snap.netAccess) {
+		t.Error("Intersect mutated NetRules AccessNet")
+	}
+}
+
+func TestNilSubFields(t *testing.T) {
+	t.Parallel()
+
+	empty := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	result, err := landlock.Intersect(empty, empty)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.HandledAccessFS) != 0 {
+		t.Errorf(
+			"HandledAccessFS = %v, want empty",
+			result.HandledAccessFS,
+		)
+	}
+
+	if len(result.PathRules) != 0 {
+		t.Errorf("PathRules = %v, want empty", result.PathRules)
+	}
+
+	result, err = landlock.Union(empty, empty)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.HandledAccessFS) != 0 {
+		t.Errorf(
+			"HandledAccessFS = %v, want empty",
+			result.HandledAccessFS,
+		)
+	}
+
+	if len(result.PathRules) != 0 {
+		t.Errorf("PathRules = %v, want empty", result.PathRules)
+	}
+}
+
+func TestIntersectDisjointPathPartiallyHandled(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	result, err := landlock.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf(
+			"expected 1 path rule (write_file not handled), got %d",
+			len(result.PathRules),
+		)
+	}
+
+	wantAccess := []landlock.FSAccessRight{
+		landlock.FSAccessWriteFile,
+	}
+
+	slices.Sort(result.PathRules[0].AccessFS)
+
+	if !slices.Equal(result.PathRules[0].AccessFS, wantAccess) {
+		t.Errorf(
+			"AccessFS = %v, want %v",
+			result.PathRules[0].AccessFS, wantAccess,
+		)
+	}
+}
+
+func buildUnsortedProfile() *landlock.Profile {
+	return &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessWriteFile,
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{
+			{Path: pathVar, AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			}},
+			{Path: pathEtc, AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			}},
+		},
+		NetRules: []landlock.NetRule{
+			{Port: 443, AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessConnectTCP,
+			}},
+			{Port: 80, AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+			}},
+		},
+	}
+}
+
+func assertSorted(
+	t *testing.T, result *landlock.Profile,
+) {
+	t.Helper()
+
+	if result.PathRules[0].Path != pathEtc {
+		t.Errorf(
+			"first path = %q, want %q (sorted)",
+			result.PathRules[0].Path, pathEtc,
+		)
+	}
+
+	if result.PathRules[1].Path != pathVar {
+		t.Errorf(
+			"second path = %q, want %q (sorted)",
+			result.PathRules[1].Path, pathVar,
+		)
+	}
+
+	if result.NetRules[0].Port != 80 {
+		t.Errorf("first port = %d, want 80", result.NetRules[0].Port)
+	}
+
+	if result.NetRules[1].Port != 443 {
+		t.Errorf(
+			"second port = %d, want 443",
+			result.NetRules[1].Port,
+		)
+	}
+
+	wantFS := []landlock.FSAccessRight{
+		landlock.FSAccessReadFile,
+		landlock.FSAccessWriteFile,
+	}
+
+	if !slices.Equal(result.HandledAccessFS, wantFS) {
+		t.Errorf(
+			"HandledAccessFS = %v, want %v (sorted)",
+			result.HandledAccessFS, wantFS,
+		)
+	}
+}
+
+func TestIntersectSortedOutput(t *testing.T) {
+	t.Parallel()
+
+	result, err := landlock.Intersect(buildUnsortedProfile())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertSorted(t, result)
+}
