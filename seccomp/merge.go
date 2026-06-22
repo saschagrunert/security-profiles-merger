@@ -18,18 +18,19 @@ package seccomp
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"slices"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 var (
 	// ErrNoProfiles is returned when no profiles are provided.
-	ErrNoProfiles = errors.New("at least one profile is required")
+	ErrNoProfiles = merge.ErrNoProfiles
 	// ErrNilProfile is returned when a nil profile is provided.
-	ErrNilProfile = errors.New("profile must not be nil")
+	ErrNilProfile = merge.ErrNilProfile
 )
 
 // Intersect merges multiple seccomp profiles via intersection: the resulting
@@ -51,7 +52,7 @@ var (
 // This implements the profile merging semantics defined in KEP-6061 for CRI
 // runtimes merging OCI-pulled profiles with node baselines.
 func Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
-	return merge(profiles, mergeStrategy{pick: MoreRestrictive, isIntersect: true})
+	return foldProfiles(profiles, mergeStrategy{pick: MoreRestrictive, isIntersect: true})
 }
 
 // Union merges multiple seccomp profiles via union: the resulting profile
@@ -65,7 +66,7 @@ func Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
 // This implements the merge semantics used by the Security Profiles Operator
 // for combining recorded profiles.
 func Union(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
-	return merge(profiles, mergeStrategy{pick: LessRestrictive, isIntersect: false})
+	return foldProfiles(profiles, mergeStrategy{pick: LessRestrictive, isIntersect: false})
 }
 
 type mergeStrategy struct {
@@ -73,7 +74,9 @@ type mergeStrategy struct {
 	isIntersect bool
 }
 
-func merge(profiles []*specs.LinuxSeccomp, strategy mergeStrategy) (*specs.LinuxSeccomp, error) {
+func foldProfiles(
+	profiles []*specs.LinuxSeccomp, strategy mergeStrategy,
+) (*specs.LinuxSeccomp, error) {
 	if len(profiles) == 0 {
 		return nil, ErrNoProfiles
 	}
@@ -89,6 +92,10 @@ func merge(profiles []*specs.LinuxSeccomp, strategy mergeStrategy) (*specs.Linux
 	for idx := 1; idx < len(profiles); idx++ {
 		result = mergeTwo(result, profiles[idx], strategy)
 	}
+
+	slices.SortFunc(result.Syscalls, func(a, b specs.LinuxSyscall) int {
+		return cmp.Compare(a.Names[0], b.Names[0])
+	})
 
 	return result, nil
 }
@@ -115,56 +122,13 @@ func mergeTwo(
 
 	if strategy.isIntersect {
 		merged.Architectures = intersectArchitectures(left.Architectures, right.Architectures)
-		merged.Flags = intersectSlice(left.Flags, right.Flags)
+		merged.Flags = merge.IntersectSlice(left.Flags, right.Flags)
 	} else {
-		merged.Architectures = unionSlice(left.Architectures, right.Architectures)
-		merged.Flags = unionSlice(left.Flags, right.Flags)
+		merged.Architectures = merge.UnionSlice(left.Architectures, right.Architectures)
+		merged.Flags = merge.UnionSlice(left.Flags, right.Flags)
 	}
 
 	return merged
-}
-
-func intersectSlice[T comparable](left, right []T) []T {
-	if len(left) == 0 || len(right) == 0 {
-		return nil
-	}
-
-	rightSet := make(map[T]struct{}, len(right))
-	for _, val := range right {
-		rightSet[val] = struct{}{}
-	}
-
-	var result []T
-
-	for _, val := range left {
-		if _, ok := rightSet[val]; ok {
-			result = append(result, val)
-		}
-	}
-
-	return result
-}
-
-func unionSlice[T comparable](left, right []T) []T {
-	seen := make(map[T]struct{})
-
-	var result []T
-
-	for _, val := range left {
-		if _, ok := seen[val]; !ok {
-			seen[val] = struct{}{}
-			result = append(result, val)
-		}
-	}
-
-	for _, val := range right {
-		if _, ok := seen[val]; !ok {
-			seen[val] = struct{}{}
-			result = append(result, val)
-		}
-	}
-
-	return result
 }
 
 func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
@@ -176,7 +140,7 @@ func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
 		return slices.Clone(left)
 	}
 
-	return intersectSlice(left, right)
+	return merge.IntersectSlice(left, right)
 }
 
 func normalizeSyscalls(
@@ -215,22 +179,13 @@ func mergeSyscalls(
 	leftMap := normalizeSyscalls(left, strategy)
 	rightMap := normalizeSyscalls(right, strategy)
 
-	allNames := make(map[string]struct{})
-	for name := range leftMap {
-		allNames[name] = struct{}{}
-	}
-
-	for name := range rightMap {
-		allNames[name] = struct{}{}
-	}
-
 	mergedDefault := pick(left.DefaultAction, right.DefaultAction)
 
 	var result []specs.LinuxSyscall
 
-	for name := range allNames {
+	for name, leftEntry := range leftMap {
 		entry := mergeSyscallEntry(
-			leftMap[name], rightMap[name],
+			leftEntry, rightMap[name],
 			left.DefaultAction, right.DefaultAction,
 			mergedDefault, strategy,
 		)
@@ -239,9 +194,20 @@ func mergeSyscalls(
 		}
 	}
 
-	slices.SortFunc(result, func(a, b specs.LinuxSyscall) int {
-		return cmp.Compare(a.Names[0], b.Names[0])
-	})
+	for name, rightEntry := range rightMap {
+		if _, inLeft := leftMap[name]; inLeft {
+			continue
+		}
+
+		entry := mergeSyscallEntry(
+			nil, rightEntry,
+			left.DefaultAction, right.DefaultAction,
+			mergedDefault, strategy,
+		)
+		if entry != nil {
+			result = append(result, *entry)
+		}
+	}
 
 	return result
 }

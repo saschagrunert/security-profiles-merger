@@ -2,8 +2,6 @@
 
 [![ci](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml/badge.svg)](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/saschagrunert/security-profiles-merger/graph/badge.svg)](https://codecov.io/gh/saschagrunert/security-profiles-merger)
-[![Go Report Card](https://goreportcard.com/badge/github.com/saschagrunert/security-profiles-merger)](https://goreportcard.com/report/github.com/saschagrunert/security-profiles-merger)
-[![Go Reference](https://pkg.go.dev/badge/github.com/saschagrunert/security-profiles-merger.svg)](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger)
 
 A standalone Go library for merging security profiles (seccomp, AppArmor) used
 by Kubernetes CRI runtimes and the Security Profiles Operator.

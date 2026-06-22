@@ -18,17 +18,18 @@ limitations under the License.
 package apparmor
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 var (
 	// ErrNoProfiles is returned when no profiles are provided.
-	ErrNoProfiles = errors.New("at least one profile is required")
+	ErrNoProfiles = merge.ErrNoProfiles
 	// ErrNilProfile is returned when a nil profile is provided.
-	ErrNilProfile = errors.New("profile must not be nil")
+	ErrNilProfile = merge.ErrNilProfile
 )
 
 // Intersect merges multiple AppArmor profiles via intersection: the resulting
@@ -39,7 +40,7 @@ var (
 // This implements the profile merging semantics defined in KEP-6061 for CRI
 // runtimes merging OCI-pulled profiles with node baselines.
 func Intersect(profiles ...*Profile) (*Profile, error) {
-	return merge(profiles, intersectStrategy{})
+	return foldProfiles(profiles, intersectStrategy{})
 }
 
 // Union merges multiple AppArmor profiles via union: the resulting profile
@@ -50,7 +51,7 @@ func Intersect(profiles ...*Profile) (*Profile, error) {
 // This implements the merge semantics used by the Security Profiles Operator
 // for combining recorded profiles.
 func Union(profiles ...*Profile) (*Profile, error) {
-	return merge(profiles, unionStrategy{})
+	return foldProfiles(profiles, unionStrategy{})
 }
 
 type strategy interface {
@@ -59,7 +60,7 @@ type strategy interface {
 	mergeFilesystem(left, right *FilesystemRules) *FilesystemRules
 }
 
-func merge(profiles []*Profile, mergeStrategy strategy) (*Profile, error) {
+func foldProfiles(profiles []*Profile, mergeStrategy strategy) (*Profile, error) {
 	if len(profiles) == 0 {
 		return nil, ErrNoProfiles
 	}
@@ -76,7 +77,26 @@ func merge(profiles []*Profile, mergeStrategy strategy) (*Profile, error) {
 		result = mergeTwo(result, profiles[idx], mergeStrategy)
 	}
 
+	sortProfile(result)
+
 	return result, nil
+}
+
+func sortProfile(profile *Profile) {
+	if profile.Executable != nil {
+		slices.Sort(profile.Executable.AllowedExecutables)
+		slices.Sort(profile.Executable.AllowedLibraries)
+	}
+
+	if profile.Filesystem != nil {
+		slices.Sort(profile.Filesystem.ReadOnlyPaths)
+		slices.Sort(profile.Filesystem.WriteOnlyPaths)
+		slices.Sort(profile.Filesystem.ReadWritePaths)
+	}
+
+	if profile.Capabilities != nil {
+		slices.Sort(profile.Capabilities.AllowedCapabilities)
+	}
 }
 
 func mergeTwo(left, right *Profile, mergeStrategy strategy) *Profile {
@@ -187,26 +207,7 @@ func mergeCapabilities(left, right *CapabilityRules, mergeStrategy strategy) *Ca
 type intersectStrategy struct{}
 
 func (intersectStrategy) mergeStrings(left, right []string) []string {
-	if len(left) == 0 || len(right) == 0 {
-		return nil
-	}
-
-	rightSet := make(map[string]struct{}, len(right))
-	for _, val := range right {
-		rightSet[val] = struct{}{}
-	}
-
-	var result []string
-
-	for _, val := range left {
-		if _, ok := rightSet[val]; ok {
-			result = append(result, val)
-		}
-	}
-
-	slices.Sort(result)
-
-	return result
+	return merge.IntersectSlice(left, right)
 }
 
 func (intersectStrategy) mergeBool(left, right *bool) *bool {
@@ -242,27 +243,7 @@ func (intersectStrategy) mergeFilesystem(left, right *FilesystemRules) *Filesyst
 type unionStrategy struct{}
 
 func (unionStrategy) mergeStrings(left, right []string) []string {
-	seen := make(map[string]struct{})
-
-	var result []string
-
-	for _, val := range left {
-		if _, ok := seen[val]; !ok {
-			seen[val] = struct{}{}
-			result = append(result, val)
-		}
-	}
-
-	for _, val := range right {
-		if _, ok := seen[val]; !ok {
-			seen[val] = struct{}{}
-			result = append(result, val)
-		}
-	}
-
-	slices.Sort(result)
-
-	return result
+	return merge.UnionSlice(left, right)
 }
 
 func (unionStrategy) mergeBool(left, right *bool) *bool {
@@ -353,10 +334,6 @@ func collapseFsPerms(perms map[string]fsPermission) *FilesystemRules {
 			writeOnly = append(writeOnly, path)
 		}
 	}
-
-	slices.Sort(readOnly)
-	slices.Sort(writeOnly)
-	slices.Sort(readWrite)
 
 	return &FilesystemRules{
 		ReadOnlyPaths:  readOnly,
