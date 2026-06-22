@@ -369,15 +369,11 @@ func mergeArgsByIndex(
 
 func sortArgs(args []specs.LinuxSeccompArg) {
 	slices.SortFunc(args, func(left, right specs.LinuxSeccompArg) int {
-		if result := cmp.Compare(left.Value, right.Value); result != 0 {
-			return result
-		}
-
-		if result := cmp.Compare(left.ValueTwo, right.ValueTwo); result != 0 {
-			return result
-		}
-
-		return cmp.Compare(string(left.Op), string(right.Op))
+		return cmp.Or(
+			cmp.Compare(left.Value, right.Value),
+			cmp.Compare(left.ValueTwo, right.ValueTwo),
+			cmp.Compare(string(left.Op), string(right.Op)),
+		)
 	})
 }
 

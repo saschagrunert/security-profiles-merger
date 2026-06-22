@@ -71,7 +71,7 @@ func IntersectSlice[T comparable](left, right []T) []T {
 		rightSet[val] = struct{}{}
 	}
 
-	var result []T
+	result := make([]T, 0, min(len(left), len(right)))
 
 	for _, val := range left {
 		if _, ok := rightSet[val]; ok {
