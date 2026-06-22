@@ -1076,3 +1076,130 @@ func TestMergeDoesNotMutateInputs(t *testing.T) {
 		t.Error("Intersect mutated second input")
 	}
 }
+
+func TestMergeDoesNotMutateAllFields(t *testing.T) {
+	t.Parallel()
+
+	left := buildFullProfile()
+
+	right := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinPython},
+			AllowedLibraries:   []string{pathLibC},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig, pathVarLog},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: boolPtr(false),
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: boolPtr(false),
+				AllowUDP: boolPtr(true),
+			},
+		},
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capChown},
+		},
+	}
+
+	snap := snapshotProfile(left)
+
+	_, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertProfileUnchanged(t, left, &snap)
+}
+
+func buildFullProfile() *apparmor.Profile {
+	return &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinPython, pathBinBash},
+			AllowedLibraries:   []string{pathLibC, pathLibM},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathVarLog},
+			ReadWritePaths: []string{pathTmp},
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: boolPtr(true),
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: boolPtr(true),
+				AllowUDP: boolPtr(false),
+			},
+		},
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capChown},
+		},
+	}
+}
+
+type profileSnapshot struct {
+	executables []string
+	libraries   []string
+	readOnly    []string
+	writeOnly   []string
+	readWrite   []string
+	allowRaw    bool
+	allowTCP    bool
+	allowUDP    bool
+	caps        []string
+}
+
+func snapshotProfile(profile *apparmor.Profile) profileSnapshot {
+	return profileSnapshot{
+		executables: slices.Clone(profile.Executable.AllowedExecutables),
+		libraries:   slices.Clone(profile.Executable.AllowedLibraries),
+		readOnly:    slices.Clone(profile.Filesystem.ReadOnlyPaths),
+		writeOnly:   slices.Clone(profile.Filesystem.WriteOnlyPaths),
+		readWrite:   slices.Clone(profile.Filesystem.ReadWritePaths),
+		allowRaw:    *profile.Network.AllowRaw,
+		allowTCP:    *profile.Network.Protocols.AllowTCP,
+		allowUDP:    *profile.Network.Protocols.AllowUDP,
+		caps:        slices.Clone(profile.Capabilities.AllowedCapabilities),
+	}
+}
+
+func assertProfileUnchanged(t *testing.T, profile *apparmor.Profile, snap *profileSnapshot) {
+	t.Helper()
+
+	if !slices.Equal(profile.Executable.AllowedExecutables, snap.executables) {
+		t.Error("merge mutated AllowedExecutables")
+	}
+
+	if !slices.Equal(profile.Executable.AllowedLibraries, snap.libraries) {
+		t.Error("merge mutated AllowedLibraries")
+	}
+
+	if !slices.Equal(profile.Filesystem.ReadOnlyPaths, snap.readOnly) {
+		t.Error("merge mutated ReadOnlyPaths")
+	}
+
+	if !slices.Equal(profile.Filesystem.WriteOnlyPaths, snap.writeOnly) {
+		t.Error("merge mutated WriteOnlyPaths")
+	}
+
+	if !slices.Equal(profile.Filesystem.ReadWritePaths, snap.readWrite) {
+		t.Error("merge mutated ReadWritePaths")
+	}
+
+	if *profile.Network.AllowRaw != snap.allowRaw {
+		t.Error("merge mutated AllowRaw")
+	}
+
+	if *profile.Network.Protocols.AllowTCP != snap.allowTCP {
+		t.Error("merge mutated AllowTCP")
+	}
+
+	if *profile.Network.Protocols.AllowUDP != snap.allowUDP {
+		t.Error("merge mutated AllowUDP")
+	}
+
+	if !slices.Equal(profile.Capabilities.AllowedCapabilities, snap.caps) {
+		t.Error("merge mutated AllowedCapabilities")
+	}
+}

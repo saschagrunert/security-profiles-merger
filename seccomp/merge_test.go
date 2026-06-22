@@ -758,40 +758,78 @@ func TestCloneProfilePreservesErrnoRet(t *testing.T) {
 func TestNormalizeDuplicateSyscalls(t *testing.T) {
 	t.Parallel()
 
-	left := &specs.LinuxSeccomp{
-		DefaultAction: specs.ActErrno,
-		Syscalls: []specs.LinuxSyscall{
-			{Names: []string{syscallRead}, Action: specs.ActAllow},
-			{Names: []string{syscallRead}, Action: specs.ActLog},
-		},
-	}
+	t.Run("intersect", func(t *testing.T) {
+		t.Parallel()
 
-	right := &specs.LinuxSeccomp{
-		DefaultAction: specs.ActErrno,
-		Syscalls: []specs.LinuxSyscall{
-			{Names: []string{syscallRead}, Action: specs.ActAllow},
-		},
-	}
+		left := &specs.LinuxSeccomp{
+			DefaultAction: specs.ActErrno,
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActAllow},
+				{Names: []string{syscallRead}, Action: specs.ActLog},
+			},
+		}
 
-	result, err := seccomp.Intersect(left, right)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+		right := &specs.LinuxSeccomp{
+			DefaultAction: specs.ActErrno,
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActAllow},
+			},
+		}
 
-	for _, syscall := range result.Syscalls {
-		if slices.Contains(syscall.Names, syscallRead) {
-			if syscall.Action != specs.ActLog {
-				t.Errorf(
-					"read action = %q, want %q (normalized to more restrictive within profile)",
-					syscall.Action, specs.ActLog,
-				)
+		result, err := seccomp.Intersect(left, right)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		assertSyscallAction(t, result, syscallRead, specs.ActLog)
+	})
+
+	t.Run("union", func(t *testing.T) {
+		t.Parallel()
+
+		left := &specs.LinuxSeccomp{
+			DefaultAction: specs.ActErrno,
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActLog},
+				{Names: []string{syscallRead}, Action: specs.ActAllow},
+			},
+		}
+
+		right := &specs.LinuxSeccomp{
+			DefaultAction: specs.ActErrno,
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActLog},
+			},
+		}
+
+		result, err := seccomp.Union(left, right)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		assertSyscallAction(t, result, syscallRead, specs.ActAllow)
+	})
+}
+
+func assertSyscallAction(
+	t *testing.T,
+	profile *specs.LinuxSeccomp,
+	name string,
+	want specs.LinuxSeccompAction,
+) {
+	t.Helper()
+
+	for _, syscall := range profile.Syscalls {
+		if slices.Contains(syscall.Names, name) {
+			if syscall.Action != want {
+				t.Errorf("%s action = %q, want %q", name, syscall.Action, want)
 			}
 
 			return
 		}
 	}
 
-	t.Error("read not found in result")
+	t.Errorf("%s not found in result", name)
 }
 
 func TestIntersectMatchedSyscallEqualsDefault(t *testing.T) {
@@ -846,17 +884,7 @@ func TestUnionSyscallOnlyInOne(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, syscall := range result.Syscalls {
-		if slices.Contains(syscall.Names, syscallRead) {
-			if syscall.Action != specs.ActAllow {
-				t.Errorf("read action = %q, want %q", syscall.Action, specs.ActAllow)
-			}
-
-			return
-		}
-	}
-
-	t.Error("read not found in result")
+	assertSyscallAction(t, result, syscallRead, specs.ActAllow)
 }
 
 func TestIntersectSyscallWithErrnoRet(t *testing.T) {
@@ -996,25 +1024,9 @@ func TestUnionThreeProfiles(t *testing.T) {
 		)
 	}
 
-	syscallMap := make(map[string]specs.LinuxSeccompAction)
-
-	for _, syscall := range result.Syscalls {
-		for _, name := range syscall.Names {
-			syscallMap[name] = syscall.Action
-		}
-	}
-
-	if action := syscallMap[syscallRead]; action != specs.ActAllow {
-		t.Errorf("read: got %q, want %q", action, specs.ActAllow)
-	}
-
-	if action := syscallMap[syscallWrite]; action != specs.ActAllow {
-		t.Errorf("write: got %q, want %q", action, specs.ActAllow)
-	}
-
-	if action := syscallMap[syscallOpen]; action != specs.ActAllow {
-		t.Errorf("open: got %q, want %q", action, specs.ActAllow)
-	}
+	assertSyscallAction(t, result, syscallRead, specs.ActAllow)
+	assertSyscallAction(t, result, syscallWrite, specs.ActAllow)
+	assertSyscallAction(t, result, syscallOpen, specs.ActAllow)
 }
 
 func TestIntersectListenerPreservation(t *testing.T) {
@@ -1074,20 +1086,7 @@ func TestIntersectActKillAlias(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, syscall := range result.Syscalls {
-		if slices.Contains(syscall.Names, syscallRead) {
-			if syscall.Action != specs.ActKill {
-				t.Errorf(
-					"read action = %q, want %q (same restrictiveness, leftmost wins)",
-					syscall.Action, specs.ActKill,
-				)
-			}
-
-			return
-		}
-	}
-
-	t.Error("read not found in result")
+	assertSyscallAction(t, result, syscallRead, specs.ActKill)
 }
 
 func TestIntersectSyscallErrnoRetTieBreaking(t *testing.T) {
@@ -1126,6 +1125,50 @@ func TestIntersectSyscallErrnoRetTieBreaking(t *testing.T) {
 	}
 
 	t.Error("read not found in result")
+}
+
+func TestIntersectOneHasArgsReverse(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallClone}, Action: specs.ActAllow},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual}},
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActAllow {
+				t.Errorf("clone action = %q, want %q", syscall.Action, specs.ActAllow)
+			}
+
+			if len(syscall.Args) != 1 {
+				t.Errorf(
+					"clone args count = %d, want 1 (intersect keeps args from the side that has them)",
+					len(syscall.Args),
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
 }
 
 func TestIntersectThreeProfiles(t *testing.T) {

@@ -106,3 +106,24 @@ func TestUnknownActionIsMostRestrictive(t *testing.T) {
 		t.Errorf("MoreRestrictive(kill, unknown) = %q, want %q", got, unknown)
 	}
 }
+
+func TestLessRestrictiveUnknownAction(t *testing.T) {
+	t.Parallel()
+
+	unknown := specs.LinuxSeccompAction("SCMP_ACT_UNKNOWN")
+
+	got := seccomp.LessRestrictive(unknown, specs.ActAllow)
+	if got != specs.ActAllow {
+		t.Errorf("LessRestrictive(unknown, allow) = %q, want %q", got, specs.ActAllow)
+	}
+
+	got = seccomp.LessRestrictive(specs.ActAllow, unknown)
+	if got != specs.ActAllow {
+		t.Errorf("LessRestrictive(allow, unknown) = %q, want %q", got, specs.ActAllow)
+	}
+
+	got = seccomp.LessRestrictive(unknown, unknown)
+	if got != unknown {
+		t.Errorf("LessRestrictive(unknown, unknown) = %q, want %q", got, unknown)
+	}
+}
