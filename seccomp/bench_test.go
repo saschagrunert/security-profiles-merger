@@ -79,6 +79,82 @@ func BenchmarkUnion(b *testing.B) {
 	}
 }
 
+func buildProfileWithArgs(numSyscalls int) *specs.LinuxSeccomp {
+	syscalls := make([]specs.LinuxSyscall, 0, numSyscalls)
+
+	for idx := range numSyscalls {
+		syscalls = append(syscalls, specs.LinuxSyscall{
+			Names:  []string{fmt.Sprintf("syscall_%d", idx)},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: uint64(idx), Op: specs.OpEqualTo},
+				{Index: 1, Value: uint64(idx + 1), Op: specs.OpGreaterThan},
+			},
+		})
+	}
+
+	return &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls:      syscalls,
+	}
+}
+
+func buildProfileWithReversedArgs(numSyscalls int) *specs.LinuxSeccomp {
+	syscalls := make([]specs.LinuxSyscall, 0, numSyscalls)
+
+	for idx := range numSyscalls {
+		syscalls = append(syscalls, specs.LinuxSyscall{
+			Names:  []string{fmt.Sprintf("syscall_%d", idx)},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 1, Value: uint64(idx + 1), Op: specs.OpGreaterThan},
+				{Index: 0, Value: uint64(idx), Op: specs.OpEqualTo},
+			},
+		})
+	}
+
+	return &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls:      syscalls,
+	}
+}
+
+func BenchmarkIntersectWithArgs(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfileWithArgs(numSyscalls)
+		right := buildProfileWithReversedArgs(numSyscalls)
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				result, err := seccomp.Intersect(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}
+
+func BenchmarkUnionWithArgs(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfileWithArgs(numSyscalls)
+		right := buildProfileWithArgs(numSyscalls)
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				result, err := seccomp.Union(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}
+
 func BenchmarkIntersectDisjoint(b *testing.B) {
 	for _, numSyscalls := range []int{10, 50, 200} {
 		left := buildProfile(numSyscalls)

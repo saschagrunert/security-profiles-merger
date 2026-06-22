@@ -971,6 +971,47 @@ func assertSorted(
 	}
 }
 
+func TestCloneSingleProfileNilRules(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	result, err := landlock.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.PathRules != nil {
+		t.Errorf("PathRules = %v, want nil", result.PathRules)
+	}
+
+	if result.NetRules != nil {
+		t.Errorf("NetRules = %v, want nil", result.NetRules)
+	}
+
+	result, err = landlock.Union(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.PathRules != nil {
+		t.Errorf("PathRules = %v, want nil (union)", result.PathRules)
+	}
+
+	if result.NetRules != nil {
+		t.Errorf("NetRules = %v, want nil (union)", result.NetRules)
+	}
+}
+
 func TestIntersectSortedOutput(t *testing.T) {
 	t.Parallel()
 

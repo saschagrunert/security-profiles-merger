@@ -17,6 +17,7 @@ limitations under the License.
 package landlock_test
 
 import (
+	"cmp"
 	"slices"
 	"testing"
 
@@ -295,15 +296,7 @@ func assertUnionInvariants(
 	if !slices.IsSortedFunc(
 		result.PathRules,
 		func(a, b landlock.PathRule) int {
-			if a.Path < b.Path {
-				return -1
-			}
-
-			if a.Path > b.Path {
-				return 1
-			}
-
-			return 0
+			return cmp.Compare(a.Path, b.Path)
 		},
 	) {
 		t.Error("result path rules are not sorted")

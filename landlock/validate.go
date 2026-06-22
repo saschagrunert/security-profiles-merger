@@ -33,25 +33,25 @@ func Validate(profile *Profile) error {
 		return ErrNilProfile
 	}
 
-	err := validateFSRights("HandledAccessFS", profile.HandledAccessFS)
+	err := validateRights("HandledAccessFS", profile.HandledAccessFS, isKnownFSRight)
 	if err != nil {
 		return err
 	}
 
-	err = validateNetRights("HandledAccessNet", profile.HandledAccessNet)
+	err = validateRights("HandledAccessNet", profile.HandledAccessNet, isKnownNetRight)
 	if err != nil {
 		return err
 	}
 
 	for idx, rule := range profile.PathRules {
-		err := validateFSRights(fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS)
+		err := validateRights(fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS, isKnownFSRight)
 		if err != nil {
 			return err
 		}
 	}
 
 	for idx, rule := range profile.NetRules {
-		err := validateNetRights(fmt.Sprintf("NetRules[%d]", idx), rule.AccessNet)
+		err := validateRights(fmt.Sprintf("NetRules[%d]", idx), rule.AccessNet, isKnownNetRight)
 		if err != nil {
 			return err
 		}
@@ -60,19 +60,11 @@ func Validate(profile *Profile) error {
 	return nil
 }
 
-func validateFSRights(context string, rights []FSAccessRight) error {
+func validateRights[T ~string](
+	context string, rights []T, known func(T) bool,
+) error {
 	for _, right := range rights {
-		if !isKnownFSRight(right) {
-			return fmt.Errorf("%s: %w %q", context, ErrUnknownRight, right)
-		}
-	}
-
-	return nil
-}
-
-func validateNetRights(context string, rights []NetAccessRight) error {
-	for _, right := range rights {
-		if !isKnownNetRight(right) {
+		if !known(right) {
 			return fmt.Errorf("%s: %w %q", context, ErrUnknownRight, right)
 		}
 	}
