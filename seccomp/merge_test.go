@@ -1017,6 +1017,117 @@ func TestUnionThreeProfiles(t *testing.T) {
 	}
 }
 
+func TestIntersectListenerPreservation(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction:    specs.ActErrno,
+		ListenerPath:     "/run/listener.sock",
+		ListenerMetadata: "metadata-left",
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction:    specs.ActErrno,
+		ListenerPath:     "/run/other.sock",
+		ListenerMetadata: "metadata-right",
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.ListenerPath != "/run/listener.sock" {
+		t.Errorf(
+			"ListenerPath = %q, want %q (from first profile)",
+			result.ListenerPath, "/run/listener.sock",
+		)
+	}
+
+	if result.ListenerMetadata != "metadata-left" {
+		t.Errorf(
+			"ListenerMetadata = %q, want %q (from first profile)",
+			result.ListenerMetadata, "metadata-left",
+		)
+	}
+}
+
+func TestIntersectActKillAlias(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKill},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKillThread},
+		},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallRead) {
+			if syscall.Action != specs.ActKill {
+				t.Errorf(
+					"read action = %q, want %q (same restrictiveness, leftmost wins)",
+					syscall.Action, specs.ActKill,
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("read not found in result")
+}
+
+func TestIntersectSyscallErrnoRetTieBreaking(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActAllow,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(1)},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActAllow,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(2)},
+		},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallRead) {
+			if syscall.ErrnoRet == nil || *syscall.ErrnoRet != 1 {
+				t.Errorf(
+					"read ErrnoRet = %v, want 1 (leftmost wins when actions are equal)",
+					syscall.ErrnoRet,
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("read not found in result")
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 
