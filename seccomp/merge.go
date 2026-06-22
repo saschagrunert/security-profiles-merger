@@ -87,10 +87,15 @@ func foldProfiles(
 		}
 	}
 
-	result := cloneProfile(profiles[0])
+	var result *specs.LinuxSeccomp
+	if len(profiles) == 1 {
+		result = cloneProfile(profiles[0])
+	} else {
+		result = mergeTwo(profiles[0], profiles[1], strategy)
 
-	for idx := 1; idx < len(profiles); idx++ {
-		result = mergeTwo(result, profiles[idx], strategy)
+		for idx := 2; idx < len(profiles); idx++ {
+			result = mergeTwo(result, profiles[idx], strategy)
+		}
 	}
 
 	slices.SortFunc(result.Syscalls, func(a, b specs.LinuxSyscall) int {
@@ -251,10 +256,18 @@ func mergeUnmatchedSyscall(
 ) *specs.LinuxSyscall {
 	effective := pick(entry.Action, otherDefault)
 	if effective != mergedDefault || len(entry.Args) > 0 {
+		// When the picked action came from the other side's default,
+		// clear ErrnoRet because the default action's ErrnoRet is
+		// already captured in the profile-level DefaultErrnoRet.
+		var errnoRet *uint
+		if effective == entry.Action {
+			errnoRet = copyErrnoRet(entry.ErrnoRet)
+		}
+
 		return &specs.LinuxSyscall{
 			Names:    slices.Clone(entry.Names),
 			Action:   effective,
-			ErrnoRet: copyErrnoRet(entry.ErrnoRet),
+			ErrnoRet: errnoRet,
 			Args:     slices.Clone(entry.Args),
 		}
 	}
@@ -353,21 +366,19 @@ func mergeErrnoRet(
 	leftAction, rightAction specs.LinuxSeccompAction,
 	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *uint {
+	// When both actions are equal, leftmost wins unconditionally,
+	// even if left's ErrnoRet is nil (meaning "no errno override").
+	if leftAction == rightAction {
+		return copyErrnoRet(leftRet)
+	}
+
 	picked := pick(leftAction, rightAction)
 
-	if picked == leftAction && leftRet != nil {
-		ret := *leftRet
-
-		return &ret
+	if picked == leftAction {
+		return copyErrnoRet(leftRet)
 	}
 
-	if picked == rightAction && rightRet != nil {
-		ret := *rightRet
-
-		return &ret
-	}
-
-	return nil
+	return copyErrnoRet(rightRet)
 }
 
 func cloneProfile(profile *specs.LinuxSeccomp) *specs.LinuxSeccomp {
