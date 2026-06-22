@@ -3,8 +3,11 @@
 [![ci](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml/badge.svg)](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/saschagrunert/security-profiles-merger/graph/badge.svg)](https://codecov.io/gh/saschagrunert/security-profiles-merger)
 
-A standalone Go library for merging security profiles (seccomp, AppArmor) used
-by Kubernetes CRI runtimes and the Security Profiles Operator.
+A standalone Go library for merging security profiles
+([seccomp](https://man7.org/linux/man-pages/man2/seccomp.2.html),
+[AppArmor](https://apparmor.net/),
+[Landlock](https://landlock.io/)) used by [Kubernetes](https://kubernetes.io) CRI runtimes and the
+[Security Profiles Operator](https://sigs.k8s.io/security-profiles-operator).
 
 ## Overview
 
@@ -13,7 +16,7 @@ This library provides two core operations on security profiles:
 - **Intersect**: Produces an effective profile that permits an operation only if
   all input profiles permit it. Used by CRI runtimes (CRI-O, containerd) to
   merge OCI-pulled profiles with node baselines per
-  [KEP-6061](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/6061-oci-artifact-security-profiles).
+  [KEP-6061](https://github.com/kubernetes/enhancements/issues/6061).
 - **Union**: Produces a profile that permits an operation if any input profile
   permits it. Used by the
   [Security Profiles Operator](https://github.com/kubernetes-sigs/security-profiles-operator)
@@ -120,6 +123,45 @@ non-nil filesystem rule sets produce no overlapping paths after intersection, th
 result is a non-nil empty `FilesystemRules` (preserving the nil-vs-empty
 distinction).
 
+### landlock
+
+Landlock profile merge for Linux unprivileged sandboxing rulesets.
+
+```go
+import "github.com/saschagrunert/security-profiles-merger/landlock"
+```
+
+**Functions:**
+
+- `landlock.Intersect(profiles ...*Profile) (*Profile, error)` -
+  Merge profiles via intersection. HandledAccessFS and HandledAccessNet are
+  unioned (more handled rights = more restrictive). Path and network rules
+  are intersected per key.
+- `landlock.Union(profiles ...*Profile) (*Profile, error)` -
+  Merge profiles via union. HandledAccessFS and HandledAccessNet are
+  intersected (fewer handled rights = less restrictive). Path and network
+  rules are unioned per key.
+
+**Types:**
+
+- `Profile` - Top-level Landlock ruleset containing handled access sets and rules.
+- `FSAccessRight` - Filesystem access right (execute, read_file, write_file, etc.).
+- `NetAccessRight` - Network access right (bind_tcp, connect_tcp).
+- `PathRule` - Per-path filesystem access rights.
+- `NetRule` - Per-port network access rights.
+
+**Handled access semantics:** Landlock has inverted merge semantics for
+handled-access sets compared to rules. Unhandled access rights are implicitly
+allowed, so intersection unions the handled sets (handling more rights makes
+the ruleset more restrictive), and union intersects them (handling fewer rights
+makes it less restrictive).
+
+**Path and network rules:** During intersection, rules for entries present in
+both profiles have their access rights intersected. Entries only in one profile
+are dropped if the access right is handled by the other profile, or kept if
+unhandled. During union, access rights are combined for matching entries, and
+all non-matching entries are kept.
+
 ## Usage
 
 ### CRI runtime: merge OCI-pulled profile with node baseline (intersection)
@@ -147,6 +189,13 @@ if err != nil {
 ```go
 aaEffective, err := apparmor.Intersect(baseProfile, ociProfile)
 aaCombined, err := apparmor.Union(recorded1, recorded2)
+```
+
+### Landlock profile merge
+
+```go
+llEffective, err := landlock.Intersect(baseRuleset, ociRuleset)
+llCombined, err := landlock.Union(recorded1, recorded2)
 ```
 
 ## Community, discussion, contribution, and support
