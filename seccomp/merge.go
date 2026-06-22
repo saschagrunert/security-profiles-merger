@@ -17,11 +17,10 @@ limitations under the License.
 package seccomp
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
-	"sort"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
@@ -40,11 +39,19 @@ var (
 // (conservative).
 //
 // ListenerPath and ListenerMetadata are taken from the first profile.
+// When two profiles share the same default or syscall action, DefaultErrnoRet
+// and per-syscall ErrnoRet are taken from the earlier (leftmost) profile.
+//
+// An empty Architectures list is treated as "unspecified" and defers to the
+// other profile. Per the OCI runtime-spec, empty means "native architecture
+// only", but the native architecture is unknown at merge time. Callers that
+// need precise architecture intersection should populate the native
+// architecture explicitly before merging.
 //
 // This implements the profile merging semantics defined in KEP-6061 for CRI
 // runtimes merging OCI-pulled profiles with node baselines.
 func Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
-	return merge(profiles, MoreRestrictive)
+	return merge(profiles, mergeStrategy{pick: MoreRestrictive, isIntersect: true})
 }
 
 // Union merges multiple seccomp profiles via union: the resulting profile
@@ -52,17 +59,21 @@ func Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
 // less restrictive action is chosen. Argument filters are combined.
 //
 // ListenerPath and ListenerMetadata are taken from the first profile.
+// When two profiles share the same default or syscall action, DefaultErrnoRet
+// and per-syscall ErrnoRet are taken from the earlier (leftmost) profile.
 //
 // This implements the merge semantics used by the Security Profiles Operator
 // for combining recorded profiles.
 func Union(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
-	return merge(profiles, LessRestrictive)
+	return merge(profiles, mergeStrategy{pick: LessRestrictive, isIntersect: false})
 }
 
-// actionPicker selects between two actions based on the merge strategy.
-type actionPicker func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction
+type mergeStrategy struct {
+	pick        func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction
+	isIntersect bool
+}
 
-func merge(profiles []*specs.LinuxSeccomp, pick actionPicker) (*specs.LinuxSeccomp, error) {
+func merge(profiles []*specs.LinuxSeccomp, strategy mergeStrategy) (*specs.LinuxSeccomp, error) {
 	if len(profiles) == 0 {
 		return nil, ErrNoProfiles
 	}
@@ -76,7 +87,7 @@ func merge(profiles []*specs.LinuxSeccomp, pick actionPicker) (*specs.LinuxSecco
 	result := cloneProfile(profiles[0])
 
 	for idx := 1; idx < len(profiles); idx++ {
-		result = mergeTwo(result, profiles[idx], pick)
+		result = mergeTwo(result, profiles[idx], strategy)
 	}
 
 	return result, nil
@@ -84,9 +95,11 @@ func merge(profiles []*specs.LinuxSeccomp, pick actionPicker) (*specs.LinuxSecco
 
 func mergeTwo(
 	left, right *specs.LinuxSeccomp,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) *specs.LinuxSeccomp {
-	return &specs.LinuxSeccomp{
+	pick := strategy.pick
+
+	merged := &specs.LinuxSeccomp{
 		DefaultAction: pick(left.DefaultAction, right.DefaultAction),
 		DefaultErrnoRet: mergeErrnoRet(
 			left.DefaultErrnoRet,
@@ -95,17 +108,80 @@ func mergeTwo(
 			right.DefaultAction,
 			pick,
 		),
-		Architectures:    mergeArchitectures(left.Architectures, right.Architectures, pick),
-		Flags:            mergeFlags(left.Flags, right.Flags, pick),
-		Syscalls:         mergeSyscalls(left, right, pick),
+		Syscalls:         mergeSyscalls(left, right, strategy),
 		ListenerPath:     left.ListenerPath,
 		ListenerMetadata: left.ListenerMetadata,
 	}
+
+	if strategy.isIntersect {
+		merged.Architectures = intersectArchitectures(left.Architectures, right.Architectures)
+		merged.Flags = intersectSlice(left.Flags, right.Flags)
+	} else {
+		merged.Architectures = unionSlice(left.Architectures, right.Architectures)
+		merged.Flags = unionSlice(left.Flags, right.Flags)
+	}
+
+	return merged
+}
+
+func intersectSlice[T comparable](left, right []T) []T {
+	if len(left) == 0 || len(right) == 0 {
+		return nil
+	}
+
+	rightSet := make(map[T]struct{}, len(right))
+	for _, val := range right {
+		rightSet[val] = struct{}{}
+	}
+
+	var result []T
+
+	for _, val := range left {
+		if _, ok := rightSet[val]; ok {
+			result = append(result, val)
+		}
+	}
+
+	return result
+}
+
+func unionSlice[T comparable](left, right []T) []T {
+	seen := make(map[T]struct{})
+
+	var result []T
+
+	for _, val := range left {
+		if _, ok := seen[val]; !ok {
+			seen[val] = struct{}{}
+			result = append(result, val)
+		}
+	}
+
+	for _, val := range right {
+		if _, ok := seen[val]; !ok {
+			seen[val] = struct{}{}
+			result = append(result, val)
+		}
+	}
+
+	return result
+}
+
+func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
+	if len(left) == 0 {
+		return slices.Clone(right)
+	}
+
+	if len(right) == 0 {
+		return slices.Clone(left)
+	}
+
+	return intersectSlice(left, right)
 }
 
 func normalizeSyscalls(
 	profile *specs.LinuxSeccomp,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) map[string]*specs.LinuxSyscall {
 	normalized := make(map[string]*specs.LinuxSyscall)
 
@@ -121,7 +197,7 @@ func normalizeSyscalls(
 			}
 
 			if existing, ok := normalized[name]; ok {
-				normalized[name] = pickSyscall(existing, entry, pick)
+				normalized[name] = pickSyscall(existing, entry, strategy)
 			} else {
 				normalized[name] = entry
 			}
@@ -133,10 +209,11 @@ func normalizeSyscalls(
 
 func mergeSyscalls(
 	left, right *specs.LinuxSeccomp,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) []specs.LinuxSyscall {
-	leftMap := normalizeSyscalls(left, pick)
-	rightMap := normalizeSyscalls(right, pick)
+	pick := strategy.pick
+	leftMap := normalizeSyscalls(left, strategy)
+	rightMap := normalizeSyscalls(right, strategy)
 
 	allNames := make(map[string]struct{})
 	for name := range leftMap {
@@ -155,15 +232,15 @@ func mergeSyscalls(
 		entry := mergeSyscallEntry(
 			leftMap[name], rightMap[name],
 			left.DefaultAction, right.DefaultAction,
-			mergedDefault, pick,
+			mergedDefault, strategy,
 		)
 		if entry != nil {
 			result = append(result, *entry)
 		}
 	}
 
-	sort.Slice(result, func(idx, jdx int) bool {
-		return result[idx].Names[0] < result[jdx].Names[0]
+	slices.SortFunc(result, func(a, b specs.LinuxSyscall) int {
+		return cmp.Compare(a.Names[0], b.Names[0])
 	})
 
 	return result
@@ -172,11 +249,13 @@ func mergeSyscalls(
 func mergeSyscallEntry(
 	leftEntry, rightEntry *specs.LinuxSyscall,
 	leftDefault, rightDefault, mergedDefault specs.LinuxSeccompAction,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
+	pick := strategy.pick
+
 	switch {
 	case leftEntry != nil && rightEntry != nil:
-		return mergeMatchedSyscall(leftEntry, rightEntry, mergedDefault, pick)
+		return mergeMatchedSyscall(leftEntry, rightEntry, mergedDefault, strategy)
 	case leftEntry != nil:
 		return mergeUnmatchedSyscall(leftEntry, rightDefault, mergedDefault, pick)
 	case rightEntry != nil:
@@ -189,9 +268,9 @@ func mergeSyscallEntry(
 func mergeMatchedSyscall(
 	left, right *specs.LinuxSyscall,
 	mergedDefault specs.LinuxSeccompAction,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
-	merged := pickSyscall(left, right, pick)
+	merged := pickSyscall(left, right, strategy)
 	if merged.Action != mergedDefault || len(merged.Args) > 0 {
 		return merged
 	}
@@ -202,7 +281,7 @@ func mergeMatchedSyscall(
 func mergeUnmatchedSyscall(
 	entry *specs.LinuxSyscall,
 	otherDefault, mergedDefault specs.LinuxSeccompAction,
-	pick actionPicker,
+	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *specs.LinuxSyscall {
 	effective := pick(entry.Action, otherDefault)
 	if effective != mergedDefault || len(entry.Args) > 0 {
@@ -219,8 +298,9 @@ func mergeUnmatchedSyscall(
 
 func pickSyscall(
 	left, right *specs.LinuxSyscall,
-	pick actionPicker,
+	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
+	pick := strategy.pick
 	pickedAction := pick(left.Action, right.Action)
 
 	result := &specs.LinuxSyscall{
@@ -234,7 +314,7 @@ func pickSyscall(
 		result.ErrnoRet = copyErrnoRet(right.ErrnoRet)
 	}
 
-	args, denied := mergeArgs(left.Args, right.Args, pick)
+	args, denied := mergeArgs(left.Args, right.Args, strategy.isIntersect)
 	if denied {
 		result.Action = specs.ActKillProcess
 		result.ErrnoRet = nil
@@ -248,9 +328,9 @@ func pickSyscall(
 
 func mergeArgs(
 	leftArgs, rightArgs []specs.LinuxSeccompArg,
-	pick actionPicker,
+	isIntersect bool,
 ) ([]specs.LinuxSeccompArg, bool) {
-	if pick(specs.ActAllow, specs.ActErrno) == specs.ActErrno {
+	if isIntersect {
 		return intersectArgs(leftArgs, rightArgs)
 	}
 
@@ -272,7 +352,7 @@ func intersectArgs(
 		return slices.Clone(leftArgs), false
 	}
 
-	if reflect.DeepEqual(leftArgs, rightArgs) {
+	if slices.Equal(leftArgs, rightArgs) {
 		return slices.Clone(leftArgs), false
 	}
 
@@ -290,25 +370,11 @@ func unionArgs(
 		return nil, false
 	}
 
-	if reflect.DeepEqual(leftArgs, rightArgs) {
-		return slices.Clone(leftArgs), false
-	}
-
 	combined := make([]specs.LinuxSeccompArg, 0, len(leftArgs)+len(rightArgs))
 	combined = append(combined, leftArgs...)
 
 	for _, rightArg := range rightArgs {
-		found := false
-
-		for _, leftArg := range leftArgs {
-			if reflect.DeepEqual(leftArg, rightArg) {
-				found = true
-
-				break
-			}
-		}
-
-		if !found {
+		if !slices.Contains(leftArgs, rightArg) {
 			combined = append(combined, rightArg)
 		}
 	}
@@ -319,7 +385,7 @@ func unionArgs(
 func mergeErrnoRet(
 	leftRet, rightRet *uint,
 	leftAction, rightAction specs.LinuxSeccompAction,
-	pick actionPicker,
+	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *uint {
 	picked := pick(leftAction, rightAction)
 
@@ -336,118 +402,6 @@ func mergeErrnoRet(
 	}
 
 	return nil
-}
-
-func mergeArchitectures(
-	left, right []specs.Arch,
-	pick actionPicker,
-) []specs.Arch {
-	if pick(specs.ActAllow, specs.ActErrno) == specs.ActErrno {
-		return intersectArchitectures(left, right)
-	}
-
-	return unionArchitectures(left, right)
-}
-
-func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
-	if len(left) == 0 {
-		return slices.Clone(right)
-	}
-
-	if len(right) == 0 {
-		return slices.Clone(left)
-	}
-
-	rightSet := make(map[specs.Arch]struct{}, len(right))
-	for _, arch := range right {
-		rightSet[arch] = struct{}{}
-	}
-
-	var result []specs.Arch
-
-	for _, arch := range left {
-		if _, ok := rightSet[arch]; ok {
-			result = append(result, arch)
-		}
-	}
-
-	return result
-}
-
-func unionArchitectures(left, right []specs.Arch) []specs.Arch {
-	seen := make(map[specs.Arch]struct{})
-
-	var result []specs.Arch
-
-	for _, arch := range left {
-		if _, ok := seen[arch]; !ok {
-			seen[arch] = struct{}{}
-			result = append(result, arch)
-		}
-	}
-
-	for _, arch := range right {
-		if _, ok := seen[arch]; !ok {
-			seen[arch] = struct{}{}
-			result = append(result, arch)
-		}
-	}
-
-	return result
-}
-
-func mergeFlags(
-	left, right []specs.LinuxSeccompFlag,
-	pick actionPicker,
-) []specs.LinuxSeccompFlag {
-	if pick(specs.ActAllow, specs.ActErrno) == specs.ActErrno {
-		return intersectFlags(left, right)
-	}
-
-	return unionFlags(left, right)
-}
-
-func intersectFlags(left, right []specs.LinuxSeccompFlag) []specs.LinuxSeccompFlag {
-	if len(left) == 0 || len(right) == 0 {
-		return nil
-	}
-
-	rightSet := make(map[specs.LinuxSeccompFlag]struct{}, len(right))
-	for _, flag := range right {
-		rightSet[flag] = struct{}{}
-	}
-
-	var result []specs.LinuxSeccompFlag
-
-	for _, flag := range left {
-		if _, ok := rightSet[flag]; ok {
-			result = append(result, flag)
-		}
-	}
-
-	return result
-}
-
-func unionFlags(left, right []specs.LinuxSeccompFlag) []specs.LinuxSeccompFlag {
-	seen := make(map[specs.LinuxSeccompFlag]struct{})
-
-	var result []specs.LinuxSeccompFlag
-
-	for _, flag := range left {
-		if _, ok := seen[flag]; !ok {
-			seen[flag] = struct{}{}
-			result = append(result, flag)
-		}
-	}
-
-	for _, flag := range right {
-		if _, ok := seen[flag]; !ok {
-			seen[flag] = struct{}{}
-			result = append(result, flag)
-		}
-	}
-
-	return result
 }
 
 func cloneProfile(profile *specs.LinuxSeccomp) *specs.LinuxSeccomp {

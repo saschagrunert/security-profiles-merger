@@ -1024,8 +1024,20 @@ func TestFilesystemIntersectNoOverlap(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if result.Filesystem != nil {
-		t.Errorf("filesystem should be nil (no overlap), got %+v", result.Filesystem)
+	if result.Filesystem == nil {
+		t.Fatal("filesystem should not be nil (both inputs were non-nil)")
+	}
+
+	if len(result.Filesystem.ReadOnlyPaths) != 0 {
+		t.Errorf("ReadOnlyPaths = %v, want empty", result.Filesystem.ReadOnlyPaths)
+	}
+
+	if len(result.Filesystem.WriteOnlyPaths) != 0 {
+		t.Errorf("WriteOnlyPaths = %v, want empty", result.Filesystem.WriteOnlyPaths)
+	}
+
+	if len(result.Filesystem.ReadWritePaths) != 0 {
+		t.Errorf("ReadWritePaths = %v, want empty", result.Filesystem.ReadWritePaths)
 	}
 }
 
