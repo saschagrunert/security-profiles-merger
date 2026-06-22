@@ -77,25 +77,15 @@ type mergeStrategy struct {
 func foldProfiles(
 	profiles []*specs.LinuxSeccomp, strategy mergeStrategy,
 ) (*specs.LinuxSeccomp, error) {
-	if len(profiles) == 0 {
-		return nil, ErrNoProfiles
-	}
-
-	for idx, profile := range profiles {
-		if profile == nil {
-			return nil, fmt.Errorf("profile at index %d: %w", idx, ErrNilProfile)
-		}
-	}
-
-	var result *specs.LinuxSeccomp
-	if len(profiles) == 1 {
-		result = cloneProfile(profiles[0])
-	} else {
-		result = mergeTwo(profiles[0], profiles[1], strategy)
-
-		for idx := 2; idx < len(profiles); idx++ {
-			result = mergeTwo(result, profiles[idx], strategy)
-		}
+	result, err := merge.Fold(
+		profiles,
+		cloneProfile,
+		func(a, b *specs.LinuxSeccomp) *specs.LinuxSeccomp {
+			return mergeTwo(a, b, strategy)
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fold: %w", err)
 	}
 
 	slices.SortFunc(result.Syscalls, func(a, b specs.LinuxSyscall) int {
@@ -186,7 +176,7 @@ func mergeSyscalls(
 
 	mergedDefault := pick(left.DefaultAction, right.DefaultAction)
 
-	var result []specs.LinuxSyscall
+	result := make([]specs.LinuxSyscall, 0, len(leftMap)+len(rightMap))
 
 	for name, leftEntry := range leftMap {
 		entry := mergeSyscallEntry(
@@ -335,7 +325,72 @@ func intersectArgs(
 		return slices.Clone(leftArgs), false
 	}
 
-	return nil, true
+	return mergeArgsByIndex(leftArgs, rightArgs)
+}
+
+func mergeArgsByIndex(
+	leftArgs, rightArgs []specs.LinuxSeccompArg,
+) ([]specs.LinuxSeccompArg, bool) {
+	leftByIndex := groupArgsByIndex(leftArgs)
+	rightByIndex := groupArgsByIndex(rightArgs)
+
+	result := make([]specs.LinuxSeccompArg, 0, len(leftArgs)+len(rightArgs))
+
+	for idx, leftGroup := range leftByIndex {
+		rightGroup, inBoth := rightByIndex[idx]
+		if !inBoth {
+			result = append(result, leftGroup...)
+
+			continue
+		}
+
+		sortArgs(leftGroup)
+		sortArgs(rightGroup)
+
+		if !slices.Equal(leftGroup, rightGroup) {
+			return nil, true
+		}
+
+		result = append(result, leftGroup...)
+	}
+
+	for idx, rightGroup := range rightByIndex {
+		if _, inLeft := leftByIndex[idx]; !inLeft {
+			result = append(result, rightGroup...)
+		}
+	}
+
+	slices.SortFunc(result, func(a, b specs.LinuxSeccompArg) int {
+		return cmp.Compare(a.Index, b.Index)
+	})
+
+	return result, false
+}
+
+func sortArgs(args []specs.LinuxSeccompArg) {
+	slices.SortFunc(args, func(left, right specs.LinuxSeccompArg) int {
+		if result := cmp.Compare(left.Value, right.Value); result != 0 {
+			return result
+		}
+
+		if result := cmp.Compare(left.ValueTwo, right.ValueTwo); result != 0 {
+			return result
+		}
+
+		return cmp.Compare(string(left.Op), string(right.Op))
+	})
+}
+
+func groupArgsByIndex(
+	args []specs.LinuxSeccompArg,
+) map[uint][]specs.LinuxSeccompArg {
+	grouped := make(map[uint][]specs.LinuxSeccompArg)
+
+	for _, arg := range args {
+		grouped[arg.Index] = append(grouped[arg.Index], arg)
+	}
+
+	return grouped
 }
 
 func unionArgs(

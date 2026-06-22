@@ -124,6 +124,98 @@ func TestUnionSlice(t *testing.T) {
 	}
 }
 
+type testProfile struct {
+	value int
+}
+
+func cloneTestProfile(p *testProfile) *testProfile {
+	return &testProfile{value: p.value}
+}
+
+func addTestProfiles(a, b *testProfile) *testProfile {
+	return &testProfile{value: a.value + b.value}
+}
+
+func TestFoldEmpty(t *testing.T) {
+	t.Parallel()
+
+	_, err := merge.Fold[testProfile](nil, cloneTestProfile, addTestProfiles)
+	if err == nil {
+		t.Fatal("expected error for empty profiles")
+	}
+}
+
+func TestFoldNil(t *testing.T) {
+	t.Parallel()
+
+	_, err := merge.Fold([]*testProfile{nil}, cloneTestProfile, addTestProfiles)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+}
+
+func TestFoldNilAtIndex(t *testing.T) {
+	t.Parallel()
+
+	valid := &testProfile{value: 1}
+
+	_, err := merge.Fold([]*testProfile{valid, nil}, cloneTestProfile, addTestProfiles)
+	if err == nil {
+		t.Fatal("expected error for nil profile at index 1")
+	}
+}
+
+func TestFoldSingle(t *testing.T) {
+	t.Parallel()
+
+	original := &testProfile{value: 42}
+
+	result, err := merge.Fold([]*testProfile{original}, cloneTestProfile, addTestProfiles)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.value != 42 {
+		t.Errorf("value = %d, want 42", result.value)
+	}
+
+	if result == original {
+		t.Error("result should be a clone, not the same pointer")
+	}
+}
+
+func TestFoldTwo(t *testing.T) {
+	t.Parallel()
+
+	result, err := merge.Fold(
+		[]*testProfile{{value: 10}, {value: 20}},
+		cloneTestProfile, addTestProfiles,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.value != 30 {
+		t.Errorf("value = %d, want 30", result.value)
+	}
+}
+
+func TestFoldThree(t *testing.T) {
+	t.Parallel()
+
+	result, err := merge.Fold(
+		[]*testProfile{{value: 1}, {value: 2}, {value: 3}},
+		cloneTestProfile, addTestProfiles,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.value != 6 {
+		t.Errorf("value = %d, want 6", result.value)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	t.Parallel()
 

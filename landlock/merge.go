@@ -62,31 +62,13 @@ type strategy interface {
 }
 
 func foldProfiles(
-	profiles []*Profile, mergeStrategy strategy,
+	profiles []*Profile, s strategy,
 ) (*Profile, error) {
-	if len(profiles) == 0 {
-		return nil, ErrNoProfiles
-	}
-
-	for idx, profile := range profiles {
-		if profile == nil {
-			return nil, fmt.Errorf(
-				"profile at index %d: %w", idx, ErrNilProfile,
-			)
-		}
-	}
-
-	if len(profiles) == 1 {
-		result := cloneProfile(profiles[0])
-		sortProfile(result)
-
-		return result, nil
-	}
-
-	result := mergeTwo(profiles[0], profiles[1], mergeStrategy)
-
-	for idx := 2; idx < len(profiles); idx++ {
-		result = mergeTwo(result, profiles[idx], mergeStrategy)
+	result, err := merge.Fold(profiles, cloneProfile, func(a, b *Profile) *Profile {
+		return mergeTwo(a, b, s)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fold: %w", err)
 	}
 
 	sortProfile(result)
@@ -184,7 +166,7 @@ func intersectRules[Rule any, Key comparable, Right comparable, Handled comparab
 	rightHandled := handledSet(rightHandledRights)
 	leftHandled := handledSet(leftHandledRights)
 
-	var result []Rule
+	result := make([]Rule, 0, len(leftRules)+len(rightRules))
 
 	for ruleKey, leftAccess := range leftMap {
 		if rightAccess, ok := rightMap[ruleKey]; ok {
@@ -257,7 +239,7 @@ func unionRules[Rule any, Key comparable, Right comparable](
 	leftMap := ruleMap(leftRules, key, access)
 	rightMap := ruleMap(rightRules, key, access)
 
-	var result []Rule
+	result := make([]Rule, 0, len(leftRules)+len(rightRules))
 
 	for ruleKey, leftAccess := range leftMap {
 		if rightAccess, ok := rightMap[ruleKey]; ok {

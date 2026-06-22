@@ -1240,6 +1240,301 @@ func TestUnmatchedSyscallClearsErrnoRetOnActionChange(t *testing.T) {
 	t.Error("read not found in result")
 }
 
+func TestIntersectArgsDifferentIndices(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual}},
+		}},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 1, Value: 42, Op: specs.OpEqualTo}},
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActAllow {
+				t.Errorf("clone action = %q, want %q", syscall.Action, specs.ActAllow)
+			}
+
+			if len(syscall.Args) != 2 {
+				t.Fatalf(
+					"clone args count = %d, want 2 (combined from different indices)",
+					len(syscall.Args),
+				)
+			}
+
+			if syscall.Args[0].Index != 0 || syscall.Args[1].Index != 1 {
+				t.Errorf(
+					"args indices = [%d, %d], want [0, 1] (sorted by index)",
+					syscall.Args[0].Index, syscall.Args[1].Index,
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
+}
+
+func TestIntersectArgsSameIndexDifferentValues(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual},
+				{Index: 1, Value: 42, Op: specs.OpEqualTo},
+			},
+		}},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 0x20000, Op: specs.OpMaskedEqual},
+				{Index: 1, Value: 42, Op: specs.OpEqualTo},
+			},
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActKillProcess {
+				t.Errorf(
+					"clone action = %q, want %q (conservative denial)",
+					syscall.Action,
+					specs.ActKillProcess,
+				)
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
+}
+
+func TestIntersectArgsMixedIndices(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual},
+				{Index: 2, Value: 100, Op: specs.OpGreaterThan},
+			},
+		}},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual},
+				{Index: 1, Value: 42, Op: specs.OpEqualTo},
+			},
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActAllow {
+				t.Errorf("clone action = %q, want %q", syscall.Action, specs.ActAllow)
+			}
+
+			if len(syscall.Args) != 3 {
+				t.Fatalf(
+					"clone args count = %d, want 3 (shared index 0 + unique indices 1 and 2)",
+					len(syscall.Args),
+				)
+			}
+
+			for idx := 1; idx < len(syscall.Args); idx++ {
+				if syscall.Args[idx].Index < syscall.Args[idx-1].Index {
+					t.Error("args not sorted by index")
+				}
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
+}
+
+func TestIntersectArgsSameIndexDifferentOrder(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 1, Op: specs.OpEqualTo},
+				{Index: 0, Value: 2, Op: specs.OpEqualTo},
+			},
+		}},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names:  []string{syscallClone},
+			Action: specs.ActAllow,
+			Args: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 2, Op: specs.OpEqualTo},
+				{Index: 0, Value: 1, Op: specs.OpEqualTo},
+			},
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActAllow {
+				t.Errorf(
+					"clone action = %q, want %q (same args in different order)",
+					syscall.Action,
+					specs.ActAllow,
+				)
+			}
+
+			if len(syscall.Args) != 2 {
+				t.Errorf("clone args count = %d, want 2", len(syscall.Args))
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
+}
+
+func TestIntersectArgsSameIndexReorderedFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		leftArgs  []specs.LinuxSeccompArg
+		rightArgs []specs.LinuxSeccompArg
+	}{
+		{
+			name: "different ValueTwo order",
+			leftArgs: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 1, ValueTwo: 20, Op: specs.OpMaskedEqual},
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpMaskedEqual},
+			},
+			rightArgs: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpMaskedEqual},
+				{Index: 0, Value: 1, ValueTwo: 20, Op: specs.OpMaskedEqual},
+			},
+		},
+		{
+			name: "different Op order",
+			leftArgs: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpNotEqual},
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpEqualTo},
+			},
+			rightArgs: []specs.LinuxSeccompArg{
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpEqualTo},
+				{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpNotEqual},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			assertReorderedArgsAllowed(t, testCase.leftArgs, testCase.rightArgs)
+		})
+	}
+}
+
+func assertReorderedArgsAllowed(
+	t *testing.T,
+	leftArgs, rightArgs []specs.LinuxSeccompArg,
+) {
+	t.Helper()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names: []string{syscallClone}, Action: specs.ActAllow, Args: leftArgs,
+		}},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{{
+			Names: []string{syscallClone}, Action: specs.ActAllow, Args: rightArgs,
+		}},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallClone) {
+			if syscall.Action != specs.ActAllow {
+				t.Errorf("clone action = %q, want %q", syscall.Action, specs.ActAllow)
+			}
+
+			if len(syscall.Args) != len(leftArgs) {
+				t.Errorf("clone args count = %d, want %d", len(syscall.Args), len(leftArgs))
+			}
+
+			return
+		}
+	}
+
+	t.Error("clone not found in result")
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 

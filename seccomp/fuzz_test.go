@@ -47,11 +47,11 @@ func fuzzProfile(
 	act2 := actions[int(action2Idx)%len(actions)]
 
 	if name1 == "" {
-		name1 = "read"
+		name1 = syscallRead
 	}
 
 	if name2 == "" {
-		name2 = "write"
+		name2 = syscallWrite
 	}
 
 	sc1 := specs.LinuxSyscall{
