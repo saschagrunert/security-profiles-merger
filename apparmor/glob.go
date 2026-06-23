@@ -30,7 +30,16 @@ var globTokenRe = regexp.MustCompile(`\*\*?|\?|\{[^}]+\}`)
 // map to fixed regex fragments.
 var neverMatchRe = regexp.MustCompile(`^(?:$.)$`)
 
+const (
+	maxGlobPatternLen   = 4096
+	maxGlobAlternatives = 100
+)
+
 func globToRegex(pattern string) *regexp.Regexp {
+	if len(pattern) > maxGlobPatternLen {
+		return neverMatchRe
+	}
+
 	var builder strings.Builder
 
 	builder.WriteString("^")
@@ -52,6 +61,10 @@ func globToRegex(pattern string) *regexp.Regexp {
 		default:
 			inner := token[1 : len(token)-1]
 			alternatives := strings.Split(inner, ",")
+
+			if len(alternatives) > maxGlobAlternatives {
+				return neverMatchRe
+			}
 
 			for idx := range alternatives {
 				alternatives[idx] = regexp.QuoteMeta(alternatives[idx])

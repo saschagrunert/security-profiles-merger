@@ -91,11 +91,13 @@ func buildFuzzPathRules(
 		})
 	}
 
-	if access := pickFSRights(accessMask2); len(access) > 0 {
-		pathRules = append(pathRules, landlock.PathRule{
-			Path:     path2,
-			AccessFS: access,
-		})
+	if path2 != path1 {
+		if access := pickFSRights(accessMask2); len(access) > 0 {
+			pathRules = append(pathRules, landlock.PathRule{
+				Path:     path2,
+				AccessFS: access,
+			})
+		}
 	}
 
 	return pathRules
@@ -114,11 +116,13 @@ func buildFuzzNetRules(
 		})
 	}
 
-	if access := pickNetRights(netMask2); len(access) > 0 {
-		netRules = append(netRules, landlock.NetRule{
-			Port:      port2,
-			AccessNet: access,
-		})
+	if port2 != port1 {
+		if access := pickNetRights(netMask2); len(access) > 0 {
+			netRules = append(netRules, landlock.NetRule{
+				Port:      port2,
+				AccessNet: access,
+			})
+		}
 	}
 
 	return netRules

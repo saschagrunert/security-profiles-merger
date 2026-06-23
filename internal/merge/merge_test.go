@@ -48,8 +48,32 @@ func intersectCases() []struct {
 			right: []string{"b", "d"}, want: []string{"b"},
 		},
 		{
-			name: "duplicates in input", left: []string{"a", "a", "b"},
-			right: []string{"a", "b", "b"}, want: []string{"a", "a", "b"},
+			name: "duplicates deduplicated", left: []string{"a", "a", "b"},
+			right: []string{"a", "b", "b"}, want: []string{"a", "b"},
+		},
+		{
+			name: "large overlap",
+			left: []string{
+				"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+				"k", "l", "m", "n", "o", "p", "q", "r",
+			},
+			right: []string{
+				"b", "d", "f", "h", "j", "l", "n", "p", "r", "t",
+				"v", "x", "z", "aa", "bb", "cc", "dd",
+			},
+			want: []string{"b", "d", "f", "h", "j", "l", "n", "p", "r"},
+		},
+		{
+			name: "large no overlap",
+			left: []string{
+				"a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10",
+				"a11", "a12", "a13", "a14", "a15", "a16", "a17",
+			},
+			right: []string{
+				"b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "b10",
+				"b11", "b12", "b13", "b14", "b15", "b16", "b17",
+			},
+			want: nil,
 		},
 	}
 }
@@ -102,6 +126,19 @@ func unionCases() []struct {
 		{
 			name: "duplicates in input", left: []string{"a", "a", "b"},
 			right: []string{"b", "c", "c"}, want: []string{"a", "b", "c"},
+		},
+		{
+			name: "large overlap",
+			left: []string{
+				"a", "b", "c", "d", "e", "f", "g", "h", "i",
+			},
+			right: []string{
+				"f", "g", "h", "i", "j", "k", "l", "m", "n",
+			},
+			want: []string{
+				"a", "b", "c", "d", "e", "f", "g", "h", "i",
+				"j", "k", "l", "m", "n",
+			},
 		},
 	}
 }

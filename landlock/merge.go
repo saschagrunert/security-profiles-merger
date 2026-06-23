@@ -62,10 +62,17 @@ type strategy interface {
 }
 
 func foldProfiles(
-	profiles []*Profile, s strategy,
+	profiles []*Profile, mergeOp strategy,
 ) (*Profile, error) {
+	for _, profile := range profiles {
+		err := Validate(profile)
+		if err != nil {
+			return nil, fmt.Errorf("validate: %w", err)
+		}
+	}
+
 	result, err := merge.Fold(profiles, cloneProfile, func(a, b *Profile) *Profile {
-		return mergeTwo(a, b, s)
+		return mergeTwo(a, b, mergeOp)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fold: %w", err)

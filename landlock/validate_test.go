@@ -187,6 +187,64 @@ func TestValidateMultipleErrors(t *testing.T) {
 	}
 }
 
+func TestValidateDuplicatePathRule(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{
+			{
+				Path:     pathEtc,
+				AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+			},
+			{
+				Path:     pathEtc,
+				AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile},
+			},
+		},
+		NetRules: nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate path rule")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRule) {
+		t.Errorf("expected ErrDuplicateRule, got: %v", err)
+	}
+}
+
+func TestValidateDuplicateNetRule(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{
+			{
+				Port:      443,
+				AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP},
+			},
+			{
+				Port:      443,
+				AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP},
+			},
+		},
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate net rule")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRule) {
+		t.Errorf("expected ErrDuplicateRule, got: %v", err)
+	}
+}
+
 func TestValidateAllKnownFSRights(t *testing.T) {
 	t.Parallel()
 
