@@ -27,49 +27,58 @@ var ErrUnknownRight = errors.New("unknown access right")
 
 // Validate checks that a Landlock profile contains only known access
 // right values. Unknown values pass through merge silently, which may
-// produce unexpected results at enforcement time.
+// produce unexpected results at enforcement time. All validation failures
+// are collected and returned together.
 func Validate(profile *Profile) error {
 	if profile == nil {
 		return ErrNilProfile
 	}
 
+	var errs []error
+
 	err := validateRights("HandledAccessFS", profile.HandledAccessFS, isKnownFSRight)
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	err = validateRights("HandledAccessNet", profile.HandledAccessNet, isKnownNetRight)
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	for idx, rule := range profile.PathRules {
-		err := validateRights(fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS, isKnownFSRight)
+		err = validateRights(
+			fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS, isKnownFSRight,
+		)
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
 	for idx, rule := range profile.NetRules {
-		err := validateRights(fmt.Sprintf("NetRules[%d]", idx), rule.AccessNet, isKnownNetRight)
+		err = validateRights(
+			fmt.Sprintf("NetRules[%d]", idx), rule.AccessNet, isKnownNetRight,
+		)
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func validateRights[T ~string](
 	context string, rights []T, known func(T) bool,
 ) error {
+	var errs []error
+
 	for _, right := range rights {
 		if !known(right) {
-			return fmt.Errorf("%s: %w %q", context, ErrUnknownRight, right)
+			errs = append(errs, fmt.Errorf("%s: %w %q", context, ErrUnknownRight, right))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func isKnownFSRight(right FSAccessRight) bool {

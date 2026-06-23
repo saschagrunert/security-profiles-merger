@@ -1,0 +1,93 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package landlock_test
+
+import (
+	"testing"
+
+	"github.com/saschagrunert/security-profiles-merger/landlock"
+)
+
+func TestPathRuleString(t *testing.T) {
+	t.Parallel()
+
+	rule := landlock.PathRule{
+		Path:     "/etc",
+		AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile, landlock.FSAccessReadDir},
+	}
+
+	want := "/etc(read_file,read_dir)"
+	if got := rule.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestNetRuleString(t *testing.T) {
+	t.Parallel()
+
+	rule := landlock.NetRule{
+		Port:      443,
+		AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP},
+	}
+
+	want := ":443(connect_tcp)"
+	if got := rule.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestProfileString(t *testing.T) {
+	t.Parallel()
+
+	profile := landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: []landlock.PathRule{{
+			Path:     "/home",
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port:      80,
+			AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP},
+		}},
+	}
+
+	want := "Profile{fs:read_file net:bind_tcp /home(read_file) :80(bind_tcp)}"
+	if got := profile.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestProfileStringEmpty(t *testing.T) {
+	t.Parallel()
+
+	profile := landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	want := "Profile{}"
+	if got := profile.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

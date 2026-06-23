@@ -17,6 +17,8 @@ limitations under the License.
 package apparmor_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
@@ -126,5 +128,38 @@ func TestValidateDuplicateWriteOnlyAndReadWrite(t *testing.T) {
 	err := apparmor.Validate(profile)
 	if err == nil {
 		t.Fatal("expected error for duplicate path in WriteOnly and ReadWrite")
+	}
+}
+
+func TestValidateMultipleDuplicates(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig, pathTmp},
+			WriteOnlyPaths: []string{pathEtcConfig},
+			ReadWritePaths: []string{pathTmp},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for multiple duplicate paths")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicatePath) {
+		t.Errorf("expected ErrDuplicatePath, got: %v", err)
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, pathEtcConfig) {
+		t.Errorf("error should mention %s: %v", pathEtcConfig, err)
+	}
+
+	if !strings.Contains(msg, pathTmp) {
+		t.Errorf("error should mention %s: %v", pathTmp, err)
 	}
 }

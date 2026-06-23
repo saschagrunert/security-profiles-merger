@@ -31,9 +31,17 @@ const (
 	globProcStatus = "/proc/*/status"
 	globUsrLibSO   = "/usr/lib/**/*.so"
 	globDataStar   = "/data/*"
+	globUsrLibStar = "/usr/lib/*"
 
-	pathBinLs    = "/bin/ls"
-	pathDataFile = "/data/file"
+	pathBinLs     = "/bin/ls"
+	pathBinCat    = "/bin/cat"
+	pathDataFile  = "/data/file"
+	pathEtcPasswd = "/etc/passwd"
+	pathEtcShadow = "/etc/shadow"
+	pathEtcGroup  = "/etc/group"
+	pathTmpFoo    = "/tmp/foo"
+	pathTmpFooo   = "/tmp/fooo"
+	pathUsrLibSO  = "/usr/lib/x86_64/libc.so"
 )
 
 func TestUnionGlobInvalidUTF8(t *testing.T) {
@@ -73,7 +81,7 @@ func TestUnionGlobStar(t *testing.T) {
 		{
 			name:  "double star matches across directories",
 			left:  []string{globUsrLib},
-			right: []string{"/usr/lib/x86_64/libc.so"},
+			right: []string{pathUsrLibSO},
 			want:  []string{globUsrLib},
 		},
 		{
@@ -102,14 +110,14 @@ func TestUnionGlobQuestionMark(t *testing.T) {
 		{
 			name:  "matches single char",
 			left:  []string{globTmpFQO},
-			right: []string{"/tmp/foo"},
+			right: []string{pathTmpFoo},
 			want:  []string{globTmpFQO},
 		},
 		{
 			name:  "does not match extra chars",
 			left:  []string{globTmpFQO},
-			right: []string{"/tmp/fooo"},
-			want:  []string{globTmpFQO, "/tmp/fooo"},
+			right: []string{pathTmpFooo},
+			want:  []string{globTmpFQO, pathTmpFooo},
 		},
 		{
 			name:  "does not match slash",
@@ -137,14 +145,14 @@ func TestUnionGlobBraces(t *testing.T) {
 		{
 			name:  "matches alternatives",
 			left:  []string{globEtcBraces},
-			right: []string{"/etc/passwd", "/etc/shadow"},
+			right: []string{pathEtcPasswd, pathEtcShadow},
 			want:  []string{globEtcBraces},
 		},
 		{
 			name:  "does not match other values",
 			left:  []string{globEtcBraces},
-			right: []string{"/etc/group"},
-			want:  []string{"/etc/group", globEtcBraces},
+			right: []string{pathEtcGroup},
+			want:  []string{pathEtcGroup, globEtcBraces},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -178,7 +186,7 @@ func TestUnionGlobCombined(t *testing.T) {
 		{
 			name:  "double star with suffix matches nested",
 			left:  []string{globUsrLibSO},
-			right: []string{"/usr/lib/x86_64/libc.so"},
+			right: []string{pathUsrLibSO},
 			want:  []string{globUsrLibSO},
 		},
 		{
@@ -370,7 +378,7 @@ func TestUnionGlobReverseSubsumption(t *testing.T) {
 		},
 		{
 			name:  "right star subsumes left literals in same dir",
-			left:  []string{pathBinLs, "/bin/cat"},
+			left:  []string{pathBinLs, pathBinCat},
 			right: []string{globBinStar},
 			want:  []string{globBinStar},
 		},
@@ -399,9 +407,9 @@ func TestUnionGlobOverlapping(t *testing.T) {
 	}{
 		{
 			name:  "double star coexists with single star",
-			left:  []string{"/usr/lib/*"},
+			left:  []string{globUsrLibStar},
 			right: []string{globUsrLib},
-			want:  []string{"/usr/lib/*", globUsrLib},
+			want:  []string{globUsrLibStar, globUsrLib},
 		},
 		{
 			name:  "single star not subsumed by different double star",
@@ -422,7 +430,7 @@ func TestUnionGlobThreeWay(t *testing.T) {
 
 	first := &apparmor.Profile{
 		Executable: &apparmor.ExecutableRules{
-			AllowedExecutables: []string{pathBinLs, "/bin/cat"},
+			AllowedExecutables: []string{pathBinLs, pathBinCat},
 			AllowedLibraries:   nil,
 		},
 		Filesystem:   nil,
@@ -587,6 +595,299 @@ func TestUnionFilesystemBroaderRightGlobPromotion(t *testing.T) {
 	)
 }
 
+func TestIntersectGlobStar(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  []string
+		right []string
+		want  []string
+	}{
+		{
+			name:  "literal matched by glob",
+			left:  []string{pathBinLs},
+			right: []string{globBinStar},
+			want:  []string{pathBinLs},
+		},
+		{
+			name:  "glob matched by literal",
+			left:  []string{globBinStar},
+			right: []string{pathBinLs},
+			want:  []string{pathBinLs},
+		},
+		{
+			name:  "no match across directories",
+			left:  []string{globBinStar},
+			right: []string{"/usr/bin/ls"},
+			want:  nil,
+		},
+		{
+			name:  "double star matches nested",
+			left:  []string{globUsrLib},
+			right: []string{pathUsrLibSO},
+			want:  []string{pathUsrLibSO},
+		},
+		{
+			name:  "identical globs kept",
+			left:  []string{globBinStar},
+			right: []string{globBinStar},
+			want:  []string{globBinStar},
+		},
+		{
+			name:  "different globs conservative",
+			left:  []string{globUsrLib},
+			right: []string{globUsrLibStar},
+			want:  nil,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectGlobStarMultiple(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  []string
+		right []string
+		want  []string
+	}{
+		{
+			name:  "multiple literals matched by glob",
+			left:  []string{globBinStar},
+			right: []string{pathBinLs, pathBinCat},
+			want:  []string{pathBinLs, pathBinCat},
+		},
+		{
+			name:  "exact literal match preserved",
+			left:  []string{pathBinLs},
+			right: []string{pathBinLs},
+			want:  []string{pathBinLs},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectGlobBraces(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  []string
+		right []string
+		want  []string
+	}{
+		{
+			name:  "literal matches brace alternative",
+			left:  []string{pathEtcPasswd},
+			right: []string{globEtcBraces},
+			want:  []string{pathEtcPasswd},
+		},
+		{
+			name:  "non-matching literal excluded",
+			left:  []string{pathEtcGroup},
+			right: []string{globEtcBraces},
+			want:  nil,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectGlobQuestionMark(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  []string
+		right []string
+		want  []string
+	}{
+		{
+			name:  "literal matches question mark",
+			left:  []string{pathTmpFoo},
+			right: []string{globTmpFQO},
+			want:  []string{pathTmpFoo},
+		},
+		{
+			name:  "extra chars not matched",
+			left:  []string{pathTmpFooo},
+			right: []string{globTmpFQO},
+			want:  nil,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectFilesystemGlobMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  apparmor.FilesystemRules
+		right apparmor.FilesystemRules
+		want  apparmor.FilesystemRules
+	}{
+		{
+			name: "glob read intersects literal read",
+			left: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{globUsrLib},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			right: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{pathLibC},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			want: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{pathLibC},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+		},
+		{
+			name: "glob rw intersects literal read keeps read",
+			left: apparmor.FilesystemRules{
+				ReadOnlyPaths:  nil,
+				WriteOnlyPaths: nil,
+				ReadWritePaths: []string{globUsrLib},
+			},
+			right: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{pathLibC},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			want: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{pathLibC},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertFilesystemGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectFilesystemGlobNoMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  apparmor.FilesystemRules
+		right apparmor.FilesystemRules
+		want  apparmor.FilesystemRules
+	}{
+		{
+			name: "glob read intersects literal write drops",
+			left: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{globUsrLib},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			right: apparmor.FilesystemRules{
+				ReadOnlyPaths:  nil,
+				WriteOnlyPaths: []string{pathLibC},
+				ReadWritePaths: nil,
+			},
+			want: apparmor.FilesystemRules{
+				ReadOnlyPaths:  nil,
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+		},
+		{
+			name: "no match returns empty",
+			left: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{globBinStar},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			right: apparmor.FilesystemRules{
+				ReadOnlyPaths:  []string{pathLibC},
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+			want: apparmor.FilesystemRules{
+				ReadOnlyPaths:  nil,
+				WriteOnlyPaths: nil,
+				ReadWritePaths: nil,
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertFilesystemGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func assertGlobIntersect(t *testing.T, left, right, want []string) {
+	t.Helper()
+
+	leftProfile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: left,
+			AllowedLibraries:   nil,
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	rightProfile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: right,
+			AllowedLibraries:   nil,
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(leftProfile, rightProfile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	slices.Sort(want)
+
+	if !slices.Equal(result.Executable.AllowedExecutables, want) {
+		t.Errorf(
+			"got %v, want %v",
+			result.Executable.AllowedExecutables, want,
+		)
+	}
+}
+
+func assertFilesystemGlobIntersect(
+	t *testing.T,
+	left, right, want apparmor.FilesystemRules,
+) {
+	t.Helper()
+
+	assertFilesystemGlobMerge(t, apparmor.Intersect, left, right, want)
+}
+
 func assertGlobUnion(t *testing.T, left, right, want []string) {
 	t.Helper()
 
@@ -629,6 +930,16 @@ func assertFilesystemGlobUnion(
 ) {
 	t.Helper()
 
+	assertFilesystemGlobMerge(t, apparmor.Union, left, right, want)
+}
+
+func assertFilesystemGlobMerge(
+	t *testing.T,
+	merge func(...*apparmor.Profile) (*apparmor.Profile, error),
+	left, right, want apparmor.FilesystemRules,
+) {
+	t.Helper()
+
 	leftProfile := &apparmor.Profile{
 		Executable: nil,
 		Filesystem: &apparmor.FilesystemRules{
@@ -651,7 +962,7 @@ func assertFilesystemGlobUnion(
 		Capabilities: nil,
 	}
 
-	result, err := apparmor.Union(leftProfile, rightProfile)
+	result, err := merge(leftProfile, rightProfile)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

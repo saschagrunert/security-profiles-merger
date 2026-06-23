@@ -17,6 +17,8 @@ limitations under the License.
 package seccomp_test
 
 import (
+	"cmp"
+	"slices"
 	"testing"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -52,6 +54,10 @@ func fuzzProfile(
 
 	if name2 == "" {
 		name2 = syscallWrite
+	}
+
+	if name2 == name1 {
+		name2 = name1 + "_alt"
 	}
 
 	sc1 := specs.LinuxSyscall{
@@ -158,6 +164,15 @@ func fuzzMerge(
 		)
 	}
 
+	commuted, err := cfg.merge(right, left)
+	if err != nil {
+		t.Fatalf("commuted merge: %v", err)
+	}
+
+	if !equalModuloErrnoRet(result, commuted) {
+		t.Error("Merge(L,R) != Merge(R,L) modulo ErrnoRet")
+	}
+
 	idempotent, err := cfg.merge(left, left)
 	if err != nil {
 		t.Fatalf("idempotent merge: %v", err)
@@ -169,6 +184,108 @@ func fuzzMerge(
 			idempotent.DefaultAction, left.DefaultAction,
 		)
 	}
+}
+
+func sameRestrictiveness(
+	actionA, actionB specs.LinuxSeccompAction,
+) bool {
+	return seccomp.MoreRestrictive(actionA, actionB) == actionA &&
+		seccomp.MoreRestrictive(actionB, actionA) == actionB
+}
+
+func filterRedundantSyscalls(
+	syscalls []specs.LinuxSyscall,
+	defaultAction specs.LinuxSeccompAction,
+) []specs.LinuxSyscall {
+	result := make([]specs.LinuxSyscall, 0, len(syscalls))
+
+	for _, sc := range syscalls {
+		if len(sc.Args) == 0 && sameRestrictiveness(sc.Action, defaultAction) {
+			continue
+		}
+
+		result = append(result, sc)
+	}
+
+	return result
+}
+
+func equalModuloErrnoRet(
+	first, second *specs.LinuxSeccomp,
+) bool {
+	if !sameRestrictiveness(first.DefaultAction, second.DefaultAction) {
+		return false
+	}
+
+	if !slices.Equal(first.Architectures, second.Architectures) {
+		return false
+	}
+
+	if !slices.Equal(first.Flags, second.Flags) {
+		return false
+	}
+
+	firstSyscalls := filterRedundantSyscalls(first.Syscalls, first.DefaultAction)
+	secondSyscalls := filterRedundantSyscalls(second.Syscalls, second.DefaultAction)
+
+	if len(firstSyscalls) != len(secondSyscalls) {
+		return false
+	}
+
+	sortSyscallsByName(firstSyscalls)
+	sortSyscallsByName(secondSyscalls)
+
+	for idx := range firstSyscalls {
+		if firstSyscalls[idx].Names[0] != secondSyscalls[idx].Names[0] {
+			return false
+		}
+
+		if !sameRestrictiveness(firstSyscalls[idx].Action, secondSyscalls[idx].Action) {
+			return false
+		}
+
+		if !equalArgsSorted(firstSyscalls[idx].Args, secondSyscalls[idx].Args) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sortSyscallsByName(syscalls []specs.LinuxSyscall) {
+	slices.SortFunc(syscalls, func(left, right specs.LinuxSyscall) int {
+		return cmp.Compare(left.Names[0], right.Names[0])
+	})
+}
+
+func equalArgsSorted(
+	first, second []specs.LinuxSeccompArg,
+) bool {
+	firstClone := slices.Clone(first)
+	secondClone := slices.Clone(second)
+
+	sortArgsByValue(firstClone)
+	sortArgsByValue(secondClone)
+
+	return slices.Equal(firstClone, secondClone)
+}
+
+func sortArgsByValue(args []specs.LinuxSeccompArg) {
+	slices.SortFunc(args, func(left, right specs.LinuxSeccompArg) int {
+		if result := cmp.Compare(left.Index, right.Index); result != 0 {
+			return result
+		}
+
+		if result := cmp.Compare(left.Value, right.Value); result != 0 {
+			return result
+		}
+
+		if result := cmp.Compare(left.ValueTwo, right.ValueTwo); result != 0 {
+			return result
+		}
+
+		return cmp.Compare(string(left.Op), string(right.Op))
+	})
 }
 
 func FuzzIntersect(f *testing.F) {

@@ -202,7 +202,7 @@ func (intersectStrategy) mergeStrings(left, right []string) []string {
 }
 
 func (intersectStrategy) mergePaths(left, right []string) []string {
-	return merge.IntersectSlice(left, right)
+	return intersectPaths(left, right)
 }
 
 func (intersectStrategy) mergeBool(left, right *bool) *bool {
@@ -223,11 +223,28 @@ func (intersectStrategy) mergeFilesystem(left, right *FilesystemRules) *Filesyst
 	leftPerms := expandFsPerms(left)
 	rightPerms := expandFsPerms(right)
 
+	leftEntries := buildFsEntries(leftPerms)
+	rightEntries := buildFsEntries(rightPerms)
+
 	merged := make(map[string]fsPermission)
 
-	for path, leftPerm := range leftPerms {
-		if rightPerm, ok := rightPerms[path]; ok {
-			merged[path] = leftPerm.intersect(rightPerm)
+	for _, leftEntry := range leftEntries {
+		for _, rightEntry := range rightEntries {
+			key := matchIntersectPaths(leftEntry, rightEntry)
+			if key == "" {
+				continue
+			}
+
+			intersected := leftEntry.perm.intersect(rightEntry.perm)
+			if !intersected.read && !intersected.write {
+				continue
+			}
+
+			if existing, ok := merged[key]; ok {
+				merged[key] = existing.union(intersected)
+			} else {
+				merged[key] = intersected
+			}
 		}
 	}
 
@@ -346,6 +363,13 @@ func (perm fsPermission) intersect(other fsPermission) fsPermission {
 	return fsPermission{
 		read:  perm.read && other.read,
 		write: perm.write && other.write,
+	}
+}
+
+func (perm fsPermission) union(other fsPermission) fsPermission {
+	return fsPermission{
+		read:  perm.read || other.read,
+		write: perm.write || other.write,
 	}
 }
 

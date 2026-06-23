@@ -17,6 +17,7 @@ limitations under the License.
 package seccomp_test
 
 import (
+	"cmp"
 	"slices"
 	"testing"
 
@@ -1737,4 +1738,149 @@ func TestIntersectThreeProfiles(t *testing.T) {
 	if _, ok := syscallMap[syscallOpen]; ok {
 		t.Error("open should not be in result (not allowed by profiles a and c)")
 	}
+}
+
+func TestIntersectAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+	}
+
+	profileB := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallOpen}, Action: specs.ActAllow},
+		},
+	}
+
+	profileC := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActLog},
+		},
+	}
+
+	assertAssociative(t, seccomp.Intersect, profileA, profileB, profileC)
+}
+
+func TestUnionAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKillProcess,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	profileB := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+	}
+
+	profileC := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActTrap,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallOpen}, Action: specs.ActLog},
+		},
+	}
+
+	assertAssociative(t, seccomp.Union, profileA, profileB, profileC)
+}
+
+func assertAssociative(
+	t *testing.T,
+	merge func(...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error),
+	profileA, profileB, profileC *specs.LinuxSeccomp,
+) {
+	t.Helper()
+
+	mergedBC, err := merge(profileB, profileC)
+	if err != nil {
+		t.Fatalf("merge(b,c): %v", err)
+	}
+
+	leftAssoc, err := merge(profileA, mergedBC)
+	if err != nil {
+		t.Fatalf("merge(a, merge(b,c)): %v", err)
+	}
+
+	mergedAB, err := merge(profileA, profileB)
+	if err != nil {
+		t.Fatalf("merge(a,b): %v", err)
+	}
+
+	rightAssoc, err := merge(mergedAB, profileC)
+	if err != nil {
+		t.Fatalf("merge(merge(a,b), c): %v", err)
+	}
+
+	if !seccompEqualModuloErrnoRet(leftAssoc, rightAssoc) {
+		t.Error("Merge(A, Merge(B,C)) != Merge(Merge(A,B), C) modulo ErrnoRet")
+	}
+}
+
+func seccompEqualModuloErrnoRet(
+	first, second *specs.LinuxSeccomp,
+) bool {
+	if first.DefaultAction != second.DefaultAction {
+		return false
+	}
+
+	if !slices.Equal(first.Architectures, second.Architectures) {
+		return false
+	}
+
+	if !slices.Equal(first.Flags, second.Flags) {
+		return false
+	}
+
+	if len(first.Syscalls) != len(second.Syscalls) {
+		return false
+	}
+
+	for idx := range first.Syscalls {
+		if first.Syscalls[idx].Names[0] != second.Syscalls[idx].Names[0] {
+			return false
+		}
+
+		if first.Syscalls[idx].Action != second.Syscalls[idx].Action {
+			return false
+		}
+
+		firstArgs := slices.Clone(first.Syscalls[idx].Args)
+		secondArgs := slices.Clone(second.Syscalls[idx].Args)
+
+		slices.SortFunc(firstArgs, func(x, y specs.LinuxSeccompArg) int {
+			return cmp.Or(
+				cmp.Compare(x.Index, y.Index),
+				cmp.Compare(x.Value, y.Value),
+				cmp.Compare(x.ValueTwo, y.ValueTwo),
+				cmp.Compare(string(x.Op), string(y.Op)),
+			)
+		})
+
+		slices.SortFunc(secondArgs, func(x, y specs.LinuxSeccompArg) int {
+			return cmp.Or(
+				cmp.Compare(x.Index, y.Index),
+				cmp.Compare(x.Value, y.Value),
+				cmp.Compare(x.ValueTwo, y.ValueTwo),
+				cmp.Compare(string(x.Op), string(y.Op)),
+			)
+		})
+
+		if !slices.Equal(firstArgs, secondArgs) {
+			return false
+		}
+	}
+
+	return true
 }

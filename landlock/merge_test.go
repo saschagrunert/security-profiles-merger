@@ -17,6 +17,7 @@ limitations under the License.
 package landlock_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -1009,6 +1010,124 @@ func TestCloneSingleProfileNilRules(t *testing.T) {
 
 	if result.NetRules != nil {
 		t.Errorf("NetRules = %v, want nil (union)", result.NetRules)
+	}
+}
+
+func TestIntersectAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile, landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	profileB := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile, landlock.FSAccessExecute,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	profileC := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile, landlock.FSAccessExecute,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	assertLandlockAssociative(t, landlock.Intersect, profileA, profileB, profileC)
+}
+
+func TestUnionAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	profileB := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile, landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathHome,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile},
+		}},
+		NetRules: nil,
+	}
+
+	profileC := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessExecute},
+		}},
+		NetRules: nil,
+	}
+
+	assertLandlockAssociative(t, landlock.Union, profileA, profileB, profileC)
+}
+
+func assertLandlockAssociative(
+	t *testing.T,
+	merge func(...*landlock.Profile) (*landlock.Profile, error),
+	profileA, profileB, profileC *landlock.Profile,
+) {
+	t.Helper()
+
+	mergedBC, err := merge(profileB, profileC)
+	if err != nil {
+		t.Fatalf("merge(b,c): %v", err)
+	}
+
+	leftAssoc, err := merge(profileA, mergedBC)
+	if err != nil {
+		t.Fatalf("merge(a, merge(b,c)): %v", err)
+	}
+
+	mergedAB, err := merge(profileA, profileB)
+	if err != nil {
+		t.Fatalf("merge(a,b): %v", err)
+	}
+
+	rightAssoc, err := merge(mergedAB, profileC)
+	if err != nil {
+		t.Fatalf("merge(merge(a,b), c): %v", err)
+	}
+
+	if !reflect.DeepEqual(leftAssoc, rightAssoc) {
+		t.Error("Merge(A, Merge(B,C)) != Merge(Merge(A,B), C)")
 	}
 }
 

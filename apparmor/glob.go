@@ -20,21 +20,17 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 )
 
 var globTokenRe = regexp.MustCompile(`\*\*?|\?|\{[^}]+\}`)
 
 // globToRegex converts an AppArmor glob pattern to a Go regular expression.
-// Panics on compilation failure, which cannot occur because all literal
-// segments are escaped and glob tokens map to fixed regex fragments.
-var neverMatchRe = regexp.MustCompile(`^\x00$`)
+// Falls back to a never-matching regex on compilation failure, which cannot
+// occur in practice because all literal segments are escaped and glob tokens
+// map to fixed regex fragments.
+var neverMatchRe = regexp.MustCompile(`^(?:$.)$`)
 
 func globToRegex(pattern string) *regexp.Regexp {
-	if !utf8.ValidString(pattern) {
-		return neverMatchRe
-	}
-
 	var builder strings.Builder
 
 	builder.WriteString("^")
@@ -72,7 +68,12 @@ func globToRegex(pattern string) *regexp.Regexp {
 	builder.WriteString(regexp.QuoteMeta(pattern[lastEnd:]))
 	builder.WriteString("$")
 
-	return regexp.MustCompile(builder.String())
+	re, err := regexp.Compile(builder.String())
+	if err != nil {
+		return neverMatchRe
+	}
+
+	return re
 }
 
 type apparmorPath struct {
@@ -81,11 +82,12 @@ type apparmorPath struct {
 }
 
 type pathSet struct {
-	paths []apparmorPath
+	paths    []apparmorPath
+	literals map[string]struct{}
 }
 
 func newPathSet(patterns []string) pathSet {
-	var set pathSet
+	set := pathSet{paths: nil, literals: make(map[string]struct{})}
 
 	for _, pat := range patterns {
 		set.add(pat)
@@ -98,11 +100,15 @@ func newPathSet(patterns []string) pathSet {
 // or whose pattern equals path exactly. Only checks forward matching
 // (existing pattern covers incoming path).
 func (set *pathSet) findMatch(path string) int {
-	for idx, entry := range set.paths {
-		if entry.pattern == path {
-			return idx
+	if _, ok := set.literals[path]; ok {
+		for idx, entry := range set.paths {
+			if entry.pattern == path {
+				return idx
+			}
 		}
+	}
 
+	for idx, entry := range set.paths {
 		if entry.expr.MatchString(path) {
 			return idx
 		}
@@ -115,7 +121,16 @@ func (set *pathSet) matches(path string) bool {
 	return set.findMatch(path) >= 0
 }
 
-// popInteracting finds the first entry that interacts with path and removes it.
+func (set *pathSet) removeAt(idx int) {
+	removed := set.paths[idx]
+	if !globTokenRe.MatchString(removed.pattern) {
+		delete(set.literals, removed.pattern)
+	}
+
+	set.paths = slices.Delete(set.paths, idx, idx+1)
+}
+
+// popInteracting removes all entries that interact with path.
 // It checks both directions: existing patterns matching the incoming path
 // (forward), and the incoming path matching existing non-glob entries
 // (reverse). Returns the broader of the two patterns for promotion.
@@ -123,8 +138,8 @@ func (set *pathSet) popInteracting(path string) *string {
 	for idx, entry := range set.paths {
 		if entry.pattern == path {
 			ret := entry.pattern
-			set.paths[idx] = set.paths[len(set.paths)-1]
-			set.paths = set.paths[:len(set.paths)-1]
+
+			set.removeAt(idx)
 
 			return &ret
 		}
@@ -133,8 +148,8 @@ func (set *pathSet) popInteracting(path string) *string {
 	for idx, entry := range set.paths {
 		if entry.expr.MatchString(path) {
 			ret := entry.pattern
-			set.paths[idx] = set.paths[len(set.paths)-1]
-			set.paths = set.paths[:len(set.paths)-1]
+
+			set.removeAt(idx)
 
 			return &ret
 		}
@@ -142,16 +157,24 @@ func (set *pathSet) popInteracting(path string) *string {
 
 	if globTokenRe.MatchString(path) {
 		expr := globToRegex(path)
+		found := false
 
-		for idx, entry := range set.paths {
-			if !globTokenRe.MatchString(entry.pattern) && expr.MatchString(entry.pattern) {
-				set.paths[idx] = set.paths[len(set.paths)-1]
-				set.paths = set.paths[:len(set.paths)-1]
+		set.paths = slices.DeleteFunc(set.paths, func(existing apparmorPath) bool {
+			matched := !globTokenRe.MatchString(existing.pattern) &&
+				expr.MatchString(existing.pattern)
+			if matched {
+				delete(set.literals, existing.pattern)
 
-				ret := path
-
-				return &ret
+				found = true
 			}
+
+			return matched
+		})
+
+		if found {
+			ret := path
+
+			return &ret
 		}
 	}
 
@@ -170,14 +193,23 @@ func (set *pathSet) add(pattern string) {
 			return true
 		}
 
-		return !globTokenRe.MatchString(existing.pattern) &&
+		pruned := !globTokenRe.MatchString(existing.pattern) &&
 			expr.MatchString(existing.pattern)
+		if pruned {
+			delete(set.literals, existing.pattern)
+		}
+
+		return pruned
 	})
 
 	set.paths = append(set.paths, apparmorPath{
 		pattern: pattern,
 		expr:    expr,
 	})
+
+	if !globTokenRe.MatchString(pattern) {
+		set.literals[pattern] = struct{}{}
+	}
 }
 
 func (set *pathSet) patterns() []string {
@@ -192,4 +224,89 @@ func (set *pathSet) patterns() []string {
 	}
 
 	return ret
+}
+
+// intersectPaths returns paths permitted by both sides, with glob awareness.
+// Non-glob paths are kept when matched by a glob on the other side.
+// Glob-vs-glob intersection uses exact string match only (conservative).
+func intersectPaths(left, right []string) []string {
+	leftSet := newPathSet(left)
+	rightSet := newPathSet(right)
+
+	seen := make(map[string]struct{})
+
+	var result []string
+
+	addPath := func(path string) {
+		if _, ok := seen[path]; !ok {
+			seen[path] = struct{}{}
+			result = append(result, path)
+		}
+	}
+
+	addMatchedLiterals(left, &rightSet, addPath)
+	addMatchedLiterals(right, &leftSet, addPath)
+
+	for _, path := range left {
+		if globTokenRe.MatchString(path) && slices.Contains(right, path) {
+			addPath(path)
+		}
+	}
+
+	return result
+}
+
+func addMatchedLiterals(
+	paths []string, matcher *pathSet, addPath func(string),
+) {
+	for _, path := range paths {
+		if !globTokenRe.MatchString(path) && matcher.matches(path) {
+			addPath(path)
+		}
+	}
+}
+
+type fsPathEntry struct {
+	path string
+	perm fsPermission
+	expr *regexp.Regexp
+}
+
+func buildFsEntries(perms map[string]fsPermission) []fsPathEntry {
+	entries := make([]fsPathEntry, 0, len(perms))
+
+	for path, perm := range perms {
+		entries = append(entries, fsPathEntry{
+			path: path,
+			perm: perm,
+			expr: globToRegex(path),
+		})
+	}
+
+	return entries
+}
+
+// matchIntersectPaths returns the narrower path when one covers the other
+// via glob matching, the path itself for exact matches, or empty string
+// when the paths don't interact. Glob-vs-glob uses exact string match only.
+func matchIntersectPaths(left, right fsPathEntry) string {
+	if left.path == right.path {
+		return left.path
+	}
+
+	leftIsGlob := globTokenRe.MatchString(left.path)
+	rightIsGlob := globTokenRe.MatchString(right.path)
+
+	switch {
+	case !leftIsGlob && rightIsGlob:
+		if right.expr.MatchString(left.path) {
+			return left.path
+		}
+	case leftIsGlob && !rightIsGlob:
+		if left.expr.MatchString(right.path) {
+			return right.path
+		}
+	}
+
+	return ""
 }

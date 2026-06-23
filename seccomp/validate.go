@@ -30,28 +30,31 @@ var ErrUnknownAction = errors.New("unknown seccomp action")
 // Validate checks that a seccomp profile contains only known actions.
 // Unknown actions are silently treated as maximally restrictive during
 // merge, which may produce unexpected results. Calling Validate before
-// merge surfaces these problems early.
+// merge surfaces these problems early. All validation failures are
+// collected and returned together.
 func Validate(profile *specs.LinuxSeccomp) error {
 	if profile == nil {
 		return ErrNilProfile
 	}
 
+	var errs []error
+
 	err := validateAction(profile.DefaultAction, "default action")
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	for idx := range profile.Syscalls {
-		err = validateAction(
+		err := validateAction(
 			profile.Syscalls[idx].Action,
 			fmt.Sprintf("syscall entry %d action", idx),
 		)
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func validateAction(action specs.LinuxSeccompAction, context string) error {
