@@ -17,6 +17,7 @@ limitations under the License.
 package apparmor_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -341,6 +342,47 @@ func TestUnionFilesystem(t *testing.T) {
 
 	if !slices.Equal(result.Filesystem.ReadOnlyPaths, []string{pathVarLog}) {
 		t.Errorf("ReadOnlyPaths = %v, want [%s]", result.Filesystem.ReadOnlyPaths, pathVarLog)
+	}
+}
+
+func TestUnionFilesystemGlobSubsumesMultipleLiterals(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/data/a", "/data/b", "/data/c"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{"/data/*"},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Filesystem.ReadOnlyPaths) != 0 {
+		t.Errorf("ReadOnlyPaths = %v, want empty (all subsumed by glob)",
+			result.Filesystem.ReadOnlyPaths)
+	}
+
+	if !slices.Equal(result.Filesystem.ReadWritePaths, []string{"/data/*"}) {
+		t.Errorf("ReadWritePaths = %v, want [/data/*]",
+			result.Filesystem.ReadWritePaths)
 	}
 }
 
@@ -1347,5 +1389,112 @@ func assertProfileUnchanged(t *testing.T, profile *apparmor.Profile, snap *profi
 
 	if !slices.Equal(profile.Capabilities.AllowedCapabilities, snap.caps) {
 		t.Error("merge mutated AllowedCapabilities")
+	}
+}
+
+func TestIntersectAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capSysTime, capChown},
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw:  boolPtr(true),
+			Protocols: nil,
+		},
+	}
+
+	profileB := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capChown},
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw:  boolPtr(true),
+			Protocols: nil,
+		},
+	}
+
+	profileC := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capChown, capSysPtrace},
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw:  boolPtr(false),
+			Protocols: nil,
+		},
+	}
+
+	assertAppArmorAssociative(t, apparmor.Intersect, profileA, profileB, profileC)
+}
+
+func TestUnionAssociativity(t *testing.T) {
+	t.Parallel()
+
+	profileA := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	profileB := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capChown},
+		},
+	}
+
+	profileC := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capSysTime},
+		},
+	}
+
+	assertAppArmorAssociative(t, apparmor.Union, profileA, profileB, profileC)
+}
+
+func assertAppArmorAssociative(
+	t *testing.T,
+	merge func(...*apparmor.Profile) (*apparmor.Profile, error),
+	profileA, profileB, profileC *apparmor.Profile,
+) {
+	t.Helper()
+
+	mergedBC, err := merge(profileB, profileC)
+	if err != nil {
+		t.Fatalf("merge(b,c): %v", err)
+	}
+
+	leftAssoc, err := merge(profileA, mergedBC)
+	if err != nil {
+		t.Fatalf("merge(a, merge(b,c)): %v", err)
+	}
+
+	mergedAB, err := merge(profileA, profileB)
+	if err != nil {
+		t.Fatalf("merge(a,b): %v", err)
+	}
+
+	rightAssoc, err := merge(mergedAB, profileC)
+	if err != nil {
+		t.Fatalf("merge(merge(a,b), c): %v", err)
+	}
+
+	if !reflect.DeepEqual(leftAssoc, rightAssoc) {
+		t.Error("Merge(A, Merge(B,C)) != Merge(Merge(A,B), C)")
 	}
 }

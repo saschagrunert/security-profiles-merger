@@ -18,6 +18,7 @@ package landlock_test
 
 import (
 	"cmp"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -237,6 +238,15 @@ func fuzzMerge(
 	}
 
 	cfg.checkInv(t, result, left, right)
+
+	commuted, err := cfg.merge(right, left)
+	if err != nil {
+		t.Fatalf("commuted merge: %v", err)
+	}
+
+	if !reflect.DeepEqual(result, commuted) {
+		t.Error("Merge(L,R) != Merge(R,L)")
+	}
 
 	idempotent, err := cfg.merge(left, left)
 	if err != nil {

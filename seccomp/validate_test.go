@@ -17,6 +17,8 @@ limitations under the License.
 package seccomp_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -77,6 +79,40 @@ func TestValidateUnknownSyscallAction(t *testing.T) {
 	err := seccomp.Validate(profile)
 	if err == nil {
 		t.Fatal("expected error for unknown syscall action")
+	}
+}
+
+func TestValidateMultipleErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: "SCMP_ACT_INVALID",
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: "SCMP_ACT_BOGUS"},
+			{Names: []string{syscallWrite}, Action: "SCMP_ACT_FAKE"},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for multiple invalid actions")
+	}
+
+	if !errors.Is(err, seccomp.ErrUnknownAction) {
+		t.Errorf("expected ErrUnknownAction, got: %v", err)
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "default action") {
+		t.Errorf("error should mention default action: %v", err)
+	}
+
+	if !strings.Contains(msg, "syscall entry 0") {
+		t.Errorf("error should mention syscall entry 0: %v", err)
+	}
+
+	if !strings.Contains(msg, "syscall entry 1") {
+		t.Errorf("error should mention syscall entry 1: %v", err)
 	}
 }
 

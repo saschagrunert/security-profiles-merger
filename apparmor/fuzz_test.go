@@ -17,6 +17,8 @@ limitations under the License.
 package apparmor_test
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
@@ -34,12 +36,15 @@ func fuzzAppArmorProfile(
 		cap2 = "SYS_TIME"
 	}
 
-	if path1 == "" {
-		path1 = "/etc/config"
+	path1 = sanitizeFuzzPath(path1, "/etc/config")
+	path2 = sanitizeFuzzPath(path2, "/var/log")
+
+	if path2 == path1 {
+		path2 = path1 + "_alt"
 	}
 
-	if path2 == "" {
-		path2 = "/var/log"
+	if cap2 == cap1 {
+		cap2 = cap1 + "_ALT"
 	}
 
 	return &apparmor.Profile{
@@ -63,6 +68,18 @@ func fuzzAppArmorProfile(
 			AllowedCapabilities: []string{cap1, cap2},
 		},
 	}
+}
+
+func sanitizeFuzzPath(path, fallback string) string {
+	if path == "" {
+		return fallback
+	}
+
+	if strings.ContainsAny(path, "*?{") {
+		return fallback
+	}
+
+	return path
 }
 
 func addAppArmorFuzzSeeds(f *testing.F) {
@@ -121,6 +138,15 @@ func fuzzAppArmorMerge(
 	}
 
 	cfg.checkCap(t, result, left, right)
+
+	commuted, err := cfg.merge(right, left)
+	if err != nil {
+		t.Fatalf("commuted merge: %v", err)
+	}
+
+	if !reflect.DeepEqual(result, commuted) {
+		t.Error("Merge(L,R) != Merge(R,L)")
+	}
 
 	idempotent, err := cfg.merge(left, left)
 	if err != nil {

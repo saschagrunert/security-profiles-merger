@@ -32,7 +32,8 @@ var ErrDuplicatePath = errors.New("duplicate path across filesystem categories")
 //
 // The checks catch issues that would produce confusing merge results:
 // duplicate paths across filesystem categories, which expand into
-// ambiguous permission sets.
+// ambiguous permission sets. All validation failures are collected and
+// returned together.
 func Validate(profile *Profile) error {
 	if profile == nil {
 		return ErrNilProfile
@@ -51,16 +52,18 @@ func Validate(profile *Profile) error {
 func validateFilesystemPaths(rules *FilesystemRules) error {
 	seen := make(map[string]string)
 
+	var errs []error
+
 	for _, path := range rules.ReadOnlyPaths {
 		seen[path] = "ReadOnlyPaths"
 	}
 
 	for _, path := range rules.WriteOnlyPaths {
 		if category, ok := seen[path]; ok {
-			return fmt.Errorf(
+			errs = append(errs, fmt.Errorf(
 				"path %q in both %s and WriteOnlyPaths: %w",
 				path, category, ErrDuplicatePath,
-			)
+			))
 		}
 
 		seen[path] = "WriteOnlyPaths"
@@ -68,12 +71,12 @@ func validateFilesystemPaths(rules *FilesystemRules) error {
 
 	for _, path := range rules.ReadWritePaths {
 		if category, ok := seen[path]; ok {
-			return fmt.Errorf(
+			errs = append(errs, fmt.Errorf(
 				"path %q in both %s and ReadWritePaths: %w",
 				path, category, ErrDuplicatePath,
-			)
+			))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }

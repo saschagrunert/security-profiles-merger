@@ -17,6 +17,8 @@ limitations under the License.
 package landlock_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/saschagrunert/security-profiles-merger/landlock"
@@ -145,6 +147,43 @@ func TestValidateEmpty(t *testing.T) {
 	err := landlock.Validate(profile)
 	if err != nil {
 		t.Fatalf("unexpected error for empty profile: %v", err)
+	}
+}
+
+func TestValidateMultipleErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"bogus_fs"},
+		HandledAccessNet: []landlock.NetAccessRight{"bogus_net"},
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{"read_bogus"},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port:      80,
+			AccessNet: []landlock.NetAccessRight{"bind_bogus"},
+		}},
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for multiple invalid rights")
+	}
+
+	if !errors.Is(err, landlock.ErrUnknownRight) {
+		t.Errorf("expected ErrUnknownRight, got: %v", err)
+	}
+
+	msg := err.Error()
+
+	for _, want := range []string{
+		"HandledAccessFS", "HandledAccessNet",
+		"PathRules[0]", "NetRules[0]",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error should mention %s: %v", want, err)
+		}
 	}
 }
 
