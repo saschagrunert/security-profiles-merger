@@ -1535,6 +1535,157 @@ func assertReorderedArgsAllowed(
 	t.Error("clone not found in result")
 }
 
+func TestUnionSyscallsDifferent(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActAllow}},
+	)
+
+	assertUnionSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead:  specs.ActAllow,
+		syscallWrite: specs.ActAllow,
+	})
+}
+
+func TestUnionSyscallsLessRestrictive(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActErrno}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+	)
+
+	assertUnionSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead: specs.ActAllow,
+	})
+}
+
+func TestUnionSyscallsPreservesKillProcess(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActKillProcess}},
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActAllow}},
+	)
+
+	assertUnionSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead:  specs.ActKillProcess,
+		syscallWrite: specs.ActAllow,
+	})
+}
+
+func TestUnionSyscallsEmptyRight(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+		},
+		nil,
+	)
+
+	assertUnionSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead:  specs.ActAllow,
+		syscallWrite: specs.ActAllow,
+	})
+}
+
+func TestUnionSyscallsNormalizesMultiName(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite, syscallOpen}, Action: specs.ActAllow},
+		},
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActLog}},
+	)
+
+	assertUnionSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead:  specs.ActAllow,
+		syscallWrite: specs.ActAllow,
+		syscallOpen:  specs.ActAllow,
+	})
+}
+
+func TestUnionSyscallsPreservesErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(13)},
+		},
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallWrite}, Action: specs.ActErrno, ErrnoRet: uintPtr(42)},
+		},
+	)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result))
+	}
+
+	for _, syscall := range result {
+		switch syscall.Names[0] {
+		case syscallRead:
+			if syscall.ErrnoRet == nil || *syscall.ErrnoRet != 13 {
+				t.Errorf("read ErrnoRet = %v, want 13", syscall.ErrnoRet)
+			}
+		case syscallWrite:
+			if syscall.ErrnoRet == nil || *syscall.ErrnoRet != 42 {
+				t.Errorf("write ErrnoRet = %v, want 42", syscall.ErrnoRet)
+			}
+		}
+	}
+}
+
+func TestUnionSyscallsSorted(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActAllow}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+	)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result))
+	}
+
+	if result[0].Names[0] != syscallRead || result[1].Names[0] != syscallWrite {
+		t.Errorf("result not sorted: [%s, %s]", result[0].Names[0], result[1].Names[0])
+	}
+}
+
+func assertUnionSyscallsResult(
+	t *testing.T,
+	result []specs.LinuxSyscall,
+	want map[string]specs.LinuxSeccompAction,
+) {
+	t.Helper()
+
+	got := make(map[string]specs.LinuxSeccompAction)
+
+	for _, syscall := range result {
+		if len(syscall.Names) != 1 {
+			t.Fatalf("expected single-name entry, got %v", syscall.Names)
+		}
+
+		got[syscall.Names[0]] = syscall.Action
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(got), len(want))
+	}
+
+	for name, wantAction := range want {
+		if gotAction, ok := got[name]; !ok {
+			t.Errorf("%s not found in result", name)
+		} else if gotAction != wantAction {
+			t.Errorf("%s action = %q, want %q", name, gotAction, wantAction)
+		}
+	}
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 

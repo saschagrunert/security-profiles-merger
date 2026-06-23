@@ -49,6 +49,10 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   Merge profiles via union. The resulting profile permits a syscall if any input
   profile permits it. For each overlapping syscall, the less restrictive action
   is chosen.
+- `seccomp.UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall` -
+  Merge two bare syscall slices via union without a profile-level DefaultAction.
+  Unlike `Union`, no entries are elided and unmatched entries keep their original
+  action. Multi-name entries are normalized to one-name-per-entry.
 - `seccomp.MoreRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
   Returns the more restrictive of two seccomp actions.
 - `seccomp.LessRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
