@@ -138,32 +138,86 @@ func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
 	return merge.IntersectSlice(left, right)
 }
 
-func normalizeSyscalls(
-	profile *specs.LinuxSeccomp,
+// UnionSyscalls merges two syscall lists via union: for each syscall name,
+// the less restrictive action is chosen. Unlike Union, this function operates
+// on bare syscall slices without a profile-level DefaultAction, so no entries
+// are elided. Multi-name entries are normalized to one-name-per-entry and the
+// result is sorted by name.
+func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
+	strategy := mergeStrategy{pick: LessRestrictive, isIntersect: false}
+	leftMap := normalizeSyscallList(left, strategy)
+	rightMap := normalizeSyscallList(right, strategy)
+
+	result := make([]specs.LinuxSyscall, 0, len(leftMap)+len(rightMap))
+
+	for name, leftEntry := range leftMap {
+		if rightEntry, ok := rightMap[name]; ok {
+			result = append(result, *pickSyscall(leftEntry, rightEntry, strategy))
+		} else {
+			result = append(result, cloneSyscall(leftEntry))
+		}
+	}
+
+	for name, rightEntry := range rightMap {
+		if _, inLeft := leftMap[name]; !inLeft {
+			result = append(result, cloneSyscall(rightEntry))
+		}
+	}
+
+	slices.SortFunc(result, func(a, b specs.LinuxSyscall) int {
+		return cmp.Compare(a.Names[0], b.Names[0])
+	})
+
+	return result
+}
+
+func cloneSyscall(syscall *specs.LinuxSyscall) specs.LinuxSyscall {
+	clone := specs.LinuxSyscall{
+		Names:  slices.Clone(syscall.Names),
+		Action: syscall.Action,
+		Args:   slices.Clone(syscall.Args),
+	}
+
+	if syscall.ErrnoRet != nil {
+		clone.ErrnoRet = copyErrnoRet(syscall.ErrnoRet)
+	}
+
+	return clone
+}
+
+func normalizeSyscallList(
+	syscalls []specs.LinuxSyscall,
 	strategy mergeStrategy,
 ) map[string]*specs.LinuxSyscall {
 	normalized := make(map[string]*specs.LinuxSyscall)
 
-	for idx := range profile.Syscalls {
-		syscall := &profile.Syscalls[idx]
+	for idx := range syscalls {
+		entry := &syscalls[idx]
 
-		for _, name := range syscall.Names {
-			entry := &specs.LinuxSyscall{
+		for _, name := range entry.Names {
+			single := &specs.LinuxSyscall{
 				Names:    []string{name},
-				Action:   syscall.Action,
-				ErrnoRet: syscall.ErrnoRet,
-				Args:     syscall.Args,
+				Action:   entry.Action,
+				ErrnoRet: entry.ErrnoRet,
+				Args:     entry.Args,
 			}
 
 			if existing, ok := normalized[name]; ok {
-				normalized[name] = pickSyscall(existing, entry, strategy)
+				normalized[name] = pickSyscall(existing, single, strategy)
 			} else {
-				normalized[name] = entry
+				normalized[name] = single
 			}
 		}
 	}
 
 	return normalized
+}
+
+func normalizeSyscalls(
+	profile *specs.LinuxSeccomp,
+	strategy mergeStrategy,
+) map[string]*specs.LinuxSyscall {
+	return normalizeSyscallList(profile.Syscalls, strategy)
 }
 
 func mergeSyscalls(
@@ -448,17 +502,8 @@ func cloneProfile(profile *specs.LinuxSeccomp) *specs.LinuxSeccomp {
 	clone.Flags = slices.Clone(profile.Flags)
 	clone.Syscalls = make([]specs.LinuxSyscall, len(profile.Syscalls))
 
-	for idx, syscall := range profile.Syscalls {
-		clone.Syscalls[idx] = specs.LinuxSyscall{
-			Names:  slices.Clone(syscall.Names),
-			Action: syscall.Action,
-			Args:   slices.Clone(syscall.Args),
-		}
-
-		if syscall.ErrnoRet != nil {
-			ret := *syscall.ErrnoRet
-			clone.Syscalls[idx].ErrnoRet = &ret
-		}
+	for idx := range profile.Syscalls {
+		clone.Syscalls[idx] = cloneSyscall(&profile.Syscalls[idx])
 	}
 
 	return clone
