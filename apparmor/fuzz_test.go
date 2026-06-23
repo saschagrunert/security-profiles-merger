@@ -108,6 +108,12 @@ func addAppArmorFuzzSeeds(f *testing.F) {
 		"NET_ADMIN", "NET_ADMIN", "/a", "/b", false, false, false,
 		"CHOWN", "CHOWN", "/c", "/d", true, true, true,
 	)
+
+	// Only network populated, capabilities nil-like.
+	f.Add(
+		"CAP_A", "CAP_A", "/x", "/y", true, false, true,
+		"CAP_B", "CAP_B", "/x", "/z", false, true, false,
+	)
 }
 
 type fuzzAppArmorMergeConfig struct {

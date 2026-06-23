@@ -139,6 +139,21 @@ func ExampleIntersectSyscalls() {
 	// read -> SCMP_ACT_ERRNO
 }
 
+func ExampleFormatProfile() {
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+	}
+
+	fmt.Println(seccomp.FormatProfile(profile))
+
+	// Output:
+	// Profile{default:SCMP_ACT_ERRNO read->SCMP_ACT_ALLOW write->SCMP_ACT_ALLOW}
+}
+
 func ExampleUnion() {
 	recording1 := &specs.LinuxSeccomp{
 		DefaultAction: specs.ActErrno,

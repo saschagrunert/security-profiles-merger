@@ -200,6 +200,20 @@ func addLandlockFuzzSeeds(f *testing.F) {
 		uint16(8080), uint16(9090),
 		uint8(0x01), uint8(0x02),
 	)
+
+	// All FS rights handled, empty access lists.
+	f.Add(
+		uint8(0xFF), uint8(0x03),
+		"/etc", "/home",
+		uint8(0x00), uint8(0x00),
+		uint16(80), uint16(443),
+		uint8(0x00), uint8(0x00),
+		uint8(0xFF), uint8(0x03),
+		"/etc", "/tmp",
+		uint8(0x00), uint8(0x00),
+		uint16(80), uint16(8080),
+		uint8(0x00), uint8(0x00),
+	)
 }
 
 type fuzzMergeConfig struct {
