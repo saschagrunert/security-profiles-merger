@@ -53,10 +53,26 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   Merge two bare syscall slices via union without a profile-level DefaultAction.
   Unlike `Union`, no entries are elided and unmatched entries keep their original
   action. Multi-name entries are normalized to one-name-per-entry.
+- `seccomp.IntersectSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall` -
+  Merge two bare syscall slices via intersection without a profile-level
+  DefaultAction. Syscalls present in only one list are dropped. Multi-name
+  entries are normalized to one-name-per-entry and the result is sorted by name.
 - `seccomp.MoreRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
   Returns the more restrictive of two seccomp actions.
 - `seccomp.LessRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
   Returns the less restrictive of two seccomp actions.
+- `seccomp.Validate(profile *specs.LinuxSeccomp) error` -
+  Checks that a profile contains only known actions and that every syscall entry
+  has at least one name.
+- `seccomp.FormatProfile(profile *specs.LinuxSeccomp) string` -
+  Returns a human-readable representation of a seccomp profile.
+
+**Errors:**
+
+- `seccomp.ErrNoProfiles` - returned when no profiles are provided.
+- `seccomp.ErrNilProfile` - returned when a nil profile is provided.
+- `seccomp.ErrUnknownAction` - returned when a profile contains an unrecognized action.
+- `seccomp.ErrEmptySyscallNames` - returned when a syscall entry has no names.
 
 **Merge semantics:**
 
@@ -101,6 +117,16 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.Union(profiles ...*Profile) (*Profile, error)` -
   Merge profiles via union. All rule types are combined; boolean network
   permissions use OR semantics.
+- `apparmor.Validate(profile *Profile) error` -
+  Checks that no path appears in multiple filesystem categories (e.g. both
+  read-only and write-only).
+
+**Errors:**
+
+- `apparmor.ErrNoProfiles` - returned when no profiles are provided.
+- `apparmor.ErrNilProfile` - returned when a nil profile is provided.
+- `apparmor.ErrDuplicatePath` - returned when a path appears in multiple
+  filesystem categories.
 
 **Types:**
 
@@ -110,6 +136,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `FilesystemRules` - Read-only, write-only, and read-write path rules.
 - `NetworkRules` - Raw socket access and protocol permissions.
 - `AllowedProtocols` - TCP/UDP protocol permissions.
+
+All types implement `fmt.Stringer` for human-readable formatting.
 
 **Nil vs empty semantics:** A nil field means "unspecified" and defers to the
 other profile during merge. A non-nil field with empty contents means "explicitly
@@ -145,6 +173,18 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
   Merge profiles via union. HandledAccessFS and HandledAccessNet are
   intersected (fewer handled rights = less restrictive). Path and network
   rules are unioned per key.
+- `landlock.Validate(profile *Profile) error` -
+  Checks that a profile contains only known access rights and has no duplicate
+  path or port rules.
+
+**Errors:**
+
+- `landlock.ErrNoProfiles` - returned when no profiles are provided.
+- `landlock.ErrNilProfile` - returned when a nil profile is provided.
+- `landlock.ErrUnknownRight` - returned when a profile contains an unrecognized
+  access right.
+- `landlock.ErrDuplicateRule` - returned when a profile contains multiple rules
+  for the same path or port.
 
 **Types:**
 
@@ -153,6 +193,9 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 - `NetAccessRight` - Network access right (bind_tcp, connect_tcp).
 - `PathRule` - Per-path filesystem access rights.
 - `NetRule` - Per-port network access rights.
+
+`Profile`, `PathRule`, and `NetRule` implement `fmt.Stringer` for human-readable
+formatting.
 
 **Handled access semantics:** Landlock has inverted merge semantics for
 handled-access sets compared to rules. Unhandled access rights are implicitly
