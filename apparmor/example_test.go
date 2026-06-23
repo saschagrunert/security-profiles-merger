@@ -52,6 +52,25 @@ func ExampleIntersect() {
 	// Capabilities: [CHOWN NET_ADMIN]
 }
 
+func ExampleValidate() {
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathEtcConfig},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	fmt.Println(err)
+
+	// Output:
+	// path "/etc/config" in both ReadOnlyPaths and WriteOnlyPaths: duplicate path across filesystem categories
+}
+
 func ExampleUnion() {
 	recording1 := &apparmor.Profile{
 		Executable: nil,
