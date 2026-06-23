@@ -19,7 +19,6 @@ package apparmor
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
@@ -56,6 +55,7 @@ func Union(profiles ...*Profile) (*Profile, error) {
 
 type strategy interface {
 	mergeStrings(left, right []string) []string
+	mergePaths(left, right []string) []string
 	mergeBool(left, right *bool) *bool
 	mergeFilesystem(left, right *FilesystemRules) *FilesystemRules
 }
@@ -113,11 +113,11 @@ func mergeExecutable(left, right *ExecutableRules, mergeStrategy strategy) *Exec
 	}
 
 	return &ExecutableRules{
-		AllowedExecutables: mergeStrategy.mergeStrings(
+		AllowedExecutables: mergeStrategy.mergePaths(
 			left.AllowedExecutables,
 			right.AllowedExecutables,
 		),
-		AllowedLibraries: mergeStrategy.mergeStrings(
+		AllowedLibraries: mergeStrategy.mergePaths(
 			left.AllowedLibraries,
 			right.AllowedLibraries,
 		),
@@ -201,6 +201,10 @@ func (intersectStrategy) mergeStrings(left, right []string) []string {
 	return merge.IntersectSlice(left, right)
 }
 
+func (intersectStrategy) mergePaths(left, right []string) []string {
+	return merge.IntersectSlice(left, right)
+}
+
 func (intersectStrategy) mergeBool(left, right *bool) *bool {
 	if left == nil {
 		return copyBool(right)
@@ -237,6 +241,18 @@ func (unionStrategy) mergeStrings(left, right []string) []string {
 	return merge.UnionSlice(left, right)
 }
 
+func (unionStrategy) mergePaths(left, right []string) []string {
+	set := newPathSet(left)
+
+	for _, path := range right {
+		if globTokenRe.MatchString(path) || !set.matches(path) {
+			set.add(path)
+		}
+	}
+
+	return set.patterns()
+}
+
 func (unionStrategy) mergeBool(left, right *bool) *bool {
 	if left == nil {
 		return copyBool(right)
@@ -252,22 +268,72 @@ func (unionStrategy) mergeBool(left, right *bool) *bool {
 }
 
 func (unionStrategy) mergeFilesystem(left, right *FilesystemRules) *FilesystemRules {
-	leftPerms := expandFsPerms(left)
-	rightPerms := expandFsPerms(right)
+	readSet := newPathSet(left.ReadOnlyPaths)
+	writeSet := newPathSet(left.WriteOnlyPaths)
+	rwSet := newPathSet(left.ReadWritePaths)
 
-	merged := make(map[string]fsPermission)
+	addReadWritePaths(right.ReadWritePaths, &readSet, &writeSet, &rwSet)
+	addReadOnlyPaths(right.ReadOnlyPaths, &readSet, &writeSet, &rwSet)
+	addWriteOnlyPaths(right.WriteOnlyPaths, &readSet, &writeSet, &rwSet)
 
-	maps.Copy(merged, leftPerms)
+	return &FilesystemRules{
+		ReadOnlyPaths:  readSet.patterns(),
+		WriteOnlyPaths: writeSet.patterns(),
+		ReadWritePaths: rwSet.patterns(),
+	}
+}
 
-	for path, rightPerm := range rightPerms {
-		if leftPerm, ok := merged[path]; ok {
-			merged[path] = leftPerm.union(rightPerm)
+func addReadWritePaths(
+	additions []string,
+	readSet, writeSet, rwSet *pathSet,
+) {
+	for _, path := range additions {
+		if rwSet.matches(path) {
+			continue
+		}
+
+		if pat := readSet.popInteracting(path); pat != nil {
+			rwSet.add(*pat)
+		} else if pat := writeSet.popInteracting(path); pat != nil {
+			rwSet.add(*pat)
 		} else {
-			merged[path] = rightPerm
+			rwSet.add(path)
 		}
 	}
+}
 
-	return collapseFsPerms(merged)
+func addReadOnlyPaths(
+	additions []string,
+	readSet, writeSet, rwSet *pathSet,
+) {
+	for _, path := range additions {
+		if rwSet.matches(path) || readSet.matches(path) {
+			continue
+		}
+
+		if pat := writeSet.popInteracting(path); pat != nil {
+			rwSet.add(*pat)
+		} else {
+			readSet.add(path)
+		}
+	}
+}
+
+func addWriteOnlyPaths(
+	additions []string,
+	readSet, writeSet, rwSet *pathSet,
+) {
+	for _, path := range additions {
+		if rwSet.matches(path) {
+			continue
+		}
+
+		if pat := readSet.popInteracting(path); pat != nil {
+			rwSet.add(*pat)
+		} else if !writeSet.matches(path) {
+			writeSet.add(path)
+		}
+	}
 }
 
 // fsPermission tracks read/write permissions for a single path.
@@ -280,13 +346,6 @@ func (perm fsPermission) intersect(other fsPermission) fsPermission {
 	return fsPermission{
 		read:  perm.read && other.read,
 		write: perm.write && other.write,
-	}
-}
-
-func (perm fsPermission) union(other fsPermission) fsPermission {
-	return fsPermission{
-		read:  perm.read || other.read,
-		write: perm.write || other.write,
 	}
 }
 

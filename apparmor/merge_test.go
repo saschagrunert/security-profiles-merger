@@ -417,6 +417,84 @@ func TestUnionExecutable(t *testing.T) {
 	}
 }
 
+func TestIntersectFilesystemBothRW(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathTmp},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathTmp},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(result.Filesystem.ReadWritePaths, []string{pathTmp}) {
+		t.Errorf("ReadWritePaths = %v, want [%s]", result.Filesystem.ReadWritePaths, pathTmp)
+	}
+}
+
+func TestIntersectFilesystemRWAndWriteOnly(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathTmp},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{pathTmp},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(result.Filesystem.WriteOnlyPaths, []string{pathTmp}) {
+		t.Errorf("WriteOnlyPaths = %v, want [%s]", result.Filesystem.WriteOnlyPaths, pathTmp)
+	}
+
+	if len(result.Filesystem.ReadOnlyPaths) != 0 {
+		t.Errorf("ReadOnlyPaths = %v, want empty", result.Filesystem.ReadOnlyPaths)
+	}
+
+	if len(result.Filesystem.ReadWritePaths) != 0 {
+		t.Errorf("ReadWritePaths = %v, want empty", result.Filesystem.ReadWritePaths)
+	}
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 
