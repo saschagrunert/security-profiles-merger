@@ -23,9 +23,13 @@ import (
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
-// ErrUnknownAction is returned when a profile contains an unrecognized
-// seccomp action.
-var ErrUnknownAction = errors.New("unknown seccomp action")
+var (
+	// ErrUnknownAction is returned when a profile contains an unrecognized
+	// seccomp action.
+	ErrUnknownAction = errors.New("unknown seccomp action")
+	// ErrEmptySyscallNames is returned when a syscall entry has no names.
+	ErrEmptySyscallNames = errors.New("syscall entry has no names")
+)
 
 // Validate checks that a seccomp profile contains only known actions.
 // Unknown actions are silently treated as maximally restrictive during
@@ -45,6 +49,12 @@ func Validate(profile *specs.LinuxSeccomp) error {
 	}
 
 	for idx := range profile.Syscalls {
+		if len(profile.Syscalls[idx].Names) == 0 {
+			errs = append(errs, fmt.Errorf(
+				"syscall entry %d: %w", idx, ErrEmptySyscallNames,
+			))
+		}
+
 		err := validateAction(
 			profile.Syscalls[idx].Action,
 			fmt.Sprintf("syscall entry %d action", idx),

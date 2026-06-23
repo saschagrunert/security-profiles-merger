@@ -1687,6 +1687,126 @@ func assertUnionSyscallsResult(
 	}
 }
 
+func TestIntersectSyscallsCommon(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+	)
+
+	assertIntersectSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead: specs.ActAllow,
+	})
+}
+
+func TestIntersectSyscallsMoreRestrictive(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActErrno}},
+	)
+
+	assertIntersectSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallRead: specs.ActErrno,
+	})
+}
+
+func TestIntersectSyscallsDropsUnmatched(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActAllow}},
+	)
+
+	if len(result) != 0 {
+		t.Fatalf("expected empty result, got %v", result)
+	}
+}
+
+func TestIntersectSyscallsNormalizesMultiName(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+		},
+		[]specs.LinuxSyscall{{Names: []string{syscallWrite}, Action: specs.ActLog}},
+	)
+
+	assertIntersectSyscallsResult(t, result, map[string]specs.LinuxSeccompAction{
+		syscallWrite: specs.ActLog,
+	})
+}
+
+func TestIntersectSyscallsSorted(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+	)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result))
+	}
+
+	if result[0].Names[0] != syscallRead || result[1].Names[0] != syscallWrite {
+		t.Errorf("result not sorted: [%s, %s]", result[0].Names[0], result[1].Names[0])
+	}
+}
+
+func TestIntersectSyscallsEmptyInput(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+		nil,
+	)
+
+	if len(result) != 0 {
+		t.Fatalf("expected empty result, got %v", result)
+	}
+}
+
+func assertIntersectSyscallsResult(
+	t *testing.T,
+	result []specs.LinuxSyscall,
+	want map[string]specs.LinuxSeccompAction,
+) {
+	t.Helper()
+
+	got := make(map[string]specs.LinuxSeccompAction)
+
+	for _, syscall := range result {
+		if len(syscall.Names) != 1 {
+			t.Fatalf("expected single-name entry, got %v", syscall.Names)
+		}
+
+		got[syscall.Names[0]] = syscall.Action
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(got), len(want))
+	}
+
+	for name, wantAction := range want {
+		if gotAction, ok := got[name]; !ok {
+			t.Errorf("%s not found in result", name)
+		} else if gotAction != wantAction {
+			t.Errorf("%s action = %q, want %q", name, gotAction, wantAction)
+		}
+	}
+}
+
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 

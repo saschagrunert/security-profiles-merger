@@ -21,9 +21,15 @@ import (
 	"fmt"
 )
 
-// ErrUnknownRight is returned when a profile contains an unrecognized
-// access right value.
-var ErrUnknownRight = errors.New("unknown access right")
+var (
+	// ErrUnknownRight is returned when a profile contains an unrecognized
+	// access right value.
+	ErrUnknownRight = errors.New("unknown access right")
+
+	// ErrDuplicateRule is returned when a profile contains multiple rules
+	// for the same path or port.
+	ErrDuplicateRule = errors.New("duplicate rule")
+)
 
 // Validate checks that a Landlock profile contains only known access
 // right values. Unknown values pass through merge silently, which may
@@ -62,6 +68,16 @@ func Validate(profile *Profile) error {
 		if err != nil {
 			errs = append(errs, err)
 		}
+	}
+
+	err = validateDuplicatePaths(profile.PathRules)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDuplicatePorts(profile.NetRules)
+	if err != nil {
+		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
@@ -112,4 +128,36 @@ func isKnownNetRight(right NetAccessRight) bool {
 	default:
 		return false
 	}
+}
+
+func validateDuplicatePaths(rules []PathRule) error {
+	seen := make(map[string]struct{}, len(rules))
+
+	var errs []error
+
+	for _, rule := range rules {
+		if _, ok := seen[rule.Path]; ok {
+			errs = append(errs, fmt.Errorf("path %q: %w", rule.Path, ErrDuplicateRule))
+		}
+
+		seen[rule.Path] = struct{}{}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validateDuplicatePorts(rules []NetRule) error {
+	seen := make(map[uint16]struct{}, len(rules))
+
+	var errs []error
+
+	for _, rule := range rules {
+		if _, ok := seen[rule.Port]; ok {
+			errs = append(errs, fmt.Errorf("port %d: %w", rule.Port, ErrDuplicateRule))
+		}
+
+		seen[rule.Port] = struct{}{}
+	}
+
+	return errors.Join(errs...)
 }

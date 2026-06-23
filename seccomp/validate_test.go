@@ -116,6 +116,27 @@ func TestValidateMultipleErrors(t *testing.T) {
 	}
 }
 
+func TestValidateEmptySyscallNames(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: nil, Action: specs.ActAllow},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty syscall names")
+	}
+
+	if !errors.Is(err, seccomp.ErrEmptySyscallNames) {
+		t.Errorf("expected ErrEmptySyscallNames, got: %v", err)
+	}
+}
+
 func TestValidateAllKnownActions(t *testing.T) {
 	t.Parallel()
 

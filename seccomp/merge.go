@@ -77,6 +77,13 @@ type mergeStrategy struct {
 func foldProfiles(
 	profiles []*specs.LinuxSeccomp, strategy mergeStrategy,
 ) (*specs.LinuxSeccomp, error) {
+	for _, profile := range profiles {
+		err := Validate(profile)
+		if err != nil {
+			return nil, fmt.Errorf("validate: %w", err)
+		}
+	}
+
 	result, err := merge.Fold(
 		profiles,
 		cloneProfile,
@@ -161,6 +168,32 @@ func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 	for name, rightEntry := range rightMap {
 		if _, inLeft := leftMap[name]; !inLeft {
 			result = append(result, cloneSyscall(rightEntry))
+		}
+	}
+
+	slices.SortFunc(result, func(a, b specs.LinuxSyscall) int {
+		return cmp.Compare(a.Names[0], b.Names[0])
+	})
+
+	return result
+}
+
+// IntersectSyscalls merges two syscall lists via intersection: for each
+// syscall name present in both lists, the more restrictive action is chosen.
+// Syscalls present in only one list are dropped. Unlike Intersect, this
+// function operates on bare syscall slices without a profile-level
+// DefaultAction. Multi-name entries are normalized to one-name-per-entry and
+// the result is sorted by name.
+func IntersectSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
+	strategy := mergeStrategy{pick: MoreRestrictive, isIntersect: true}
+	leftMap := normalizeSyscallList(left, strategy)
+	rightMap := normalizeSyscallList(right, strategy)
+
+	result := make([]specs.LinuxSyscall, 0, min(len(leftMap), len(rightMap)))
+
+	for name, leftEntry := range leftMap {
+		if rightEntry, ok := rightMap[name]; ok {
+			result = append(result, *pickSyscall(leftEntry, rightEntry, strategy))
 		}
 	}
 

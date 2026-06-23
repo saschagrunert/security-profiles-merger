@@ -17,7 +17,9 @@ limitations under the License.
 package apparmor_test
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
@@ -42,6 +44,7 @@ const (
 	pathTmpFoo    = "/tmp/foo"
 	pathTmpFooo   = "/tmp/fooo"
 	pathUsrLibSO  = "/usr/lib/x86_64/libc.so"
+	pathLibFoo    = "/lib/foo"
 )
 
 func TestUnionGlobInvalidUTF8(t *testing.T) {
@@ -841,6 +844,30 @@ func TestIntersectFilesystemGlobNoMatch(t *testing.T) {
 	}
 }
 
+func TestIntersectFilesystemGlobPermissionUnion(t *testing.T) {
+	t.Parallel()
+
+	left := apparmor.FilesystemRules{
+		ReadOnlyPaths:  []string{"/lib/*"},
+		WriteOnlyPaths: []string{pathLibFoo},
+		ReadWritePaths: nil,
+	}
+
+	right := apparmor.FilesystemRules{
+		ReadOnlyPaths:  nil,
+		WriteOnlyPaths: nil,
+		ReadWritePaths: []string{pathLibFoo},
+	}
+
+	want := apparmor.FilesystemRules{
+		ReadOnlyPaths:  nil,
+		WriteOnlyPaths: nil,
+		ReadWritePaths: []string{pathLibFoo},
+	}
+
+	assertFilesystemGlobIntersect(t, left, right, want)
+}
+
 func assertGlobIntersect(t *testing.T, left, right, want []string) {
 	t.Helper()
 
@@ -931,6 +958,37 @@ func assertFilesystemGlobUnion(
 	t.Helper()
 
 	assertFilesystemGlobMerge(t, apparmor.Union, left, right, want)
+}
+
+func TestGlobPatternTooLong(t *testing.T) {
+	t.Parallel()
+
+	long := "/" + strings.Repeat("a", 4096) + "/*"
+
+	assertGlobIntersect(
+		t,
+		[]string{long},
+		[]string{"/" + strings.Repeat("a", 4096) + "/foo"},
+		nil,
+	)
+}
+
+func TestGlobTooManyAlternatives(t *testing.T) {
+	t.Parallel()
+
+	parts := make([]string, 101)
+	for idx := range parts {
+		parts[idx] = fmt.Sprintf("alt%d", idx)
+	}
+
+	pattern := "/etc/{" + strings.Join(parts, ",") + "}"
+
+	assertGlobIntersect(
+		t,
+		[]string{pattern},
+		[]string{"/etc/alt0"},
+		nil,
+	)
 }
 
 func assertFilesystemGlobMerge(

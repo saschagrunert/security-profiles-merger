@@ -64,30 +64,43 @@ const smallSliceThreshold = 16
 
 // IntersectSlice returns elements present in both left and right.
 func IntersectSlice[T comparable](left, right []T) []T {
-	if len(left) == 0 || len(right) == 0 {
+	switch {
+	case len(left) == 0 || len(right) == 0:
 		return nil
+	case len(right) <= smallSliceThreshold:
+		return intersectSliceSmall(left, right)
+	default:
+		return intersectSliceLarge(left, right)
 	}
+}
 
+func intersectSliceSmall[T comparable](left, right []T) []T {
 	result := make([]T, 0, min(len(left), len(right)))
 
-	if len(right) <= smallSliceThreshold {
-		for _, val := range left {
-			if slices.Contains(right, val) {
-				result = append(result, val)
-			}
+	for _, val := range left {
+		if slices.Contains(right, val) && !slices.Contains(result, val) {
+			result = append(result, val)
 		}
-
-		return result
 	}
 
+	return result
+}
+
+func intersectSliceLarge[T comparable](left, right []T) []T {
 	rightSet := make(map[T]struct{}, len(right))
 	for _, val := range right {
 		rightSet[val] = struct{}{}
 	}
 
+	result := make([]T, 0, min(len(left), len(right)))
+	seen := make(map[T]struct{}, len(left))
+
 	for _, val := range left {
 		if _, ok := rightSet[val]; ok {
-			result = append(result, val)
+			if _, dup := seen[val]; !dup {
+				seen[val] = struct{}{}
+				result = append(result, val)
+			}
 		}
 	}
 
