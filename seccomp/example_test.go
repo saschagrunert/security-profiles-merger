@@ -55,6 +55,90 @@ func ExampleIntersect() {
 	// Syscall: read -> SCMP_ACT_ALLOW
 }
 
+func ExampleValidate() {
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.LinuxSeccompAction("SCMP_ACT_BOGUS"),
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	fmt.Println(err)
+
+	// Output:
+	// default action: unknown seccomp action "SCMP_ACT_BOGUS"
+}
+
+func ExampleValidate_valid() {
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	fmt.Println(err)
+
+	// Output:
+	// <nil>
+}
+
+func ExampleMoreRestrictive() {
+	result := seccomp.MoreRestrictive(specs.ActAllow, specs.ActErrno)
+	fmt.Println(result)
+
+	// Output:
+	// SCMP_ACT_ERRNO
+}
+
+func ExampleLessRestrictive() {
+	result := seccomp.LessRestrictive(specs.ActAllow, specs.ActErrno)
+	fmt.Println(result)
+
+	// Output:
+	// SCMP_ACT_ALLOW
+}
+
+func ExampleUnionSyscalls() {
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+	)
+
+	for _, sc := range result {
+		fmt.Printf("%s -> %s\n", sc.Names[0], sc.Action)
+	}
+
+	// Output:
+	// read -> SCMP_ACT_ALLOW
+	// write -> SCMP_ACT_ALLOW
+}
+
+func ExampleIntersectSyscalls() {
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallWrite}, Action: specs.ActAllow},
+		},
+		[]specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno},
+		},
+	)
+
+	for _, sc := range result {
+		fmt.Printf("%s -> %s\n", sc.Names[0], sc.Action)
+	}
+
+	// Output:
+	// read -> SCMP_ACT_ERRNO
+}
+
 func ExampleUnion() {
 	recording1 := &specs.LinuxSeccomp{
 		DefaultAction: specs.ActErrno,

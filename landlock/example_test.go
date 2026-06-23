@@ -70,6 +70,21 @@ func ExampleIntersect() {
 	// Path: /etc -> [read_file]
 }
 
+func ExampleValidate() {
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"bogus_right"},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.Validate(profile)
+	fmt.Println(err)
+
+	// Output:
+	// HandledAccessFS: unknown access right "bogus_right"
+}
+
 func ExampleUnion() {
 	recording1 := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{
