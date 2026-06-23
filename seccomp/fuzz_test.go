@@ -122,6 +122,22 @@ func addFuzzSeeds(f *testing.F) {
 		uint8(4), uint8(8), uint8(8),
 		"open", "close", false, false, uint64(0), uint64(0),
 	)
+
+	// Same syscall name in both profiles with different actions
+	f.Add(
+		uint8(0), uint8(7), uint8(8),
+		"mmap", "brk", true, false, uint64(0xFFFF), uint64(0),
+		uint8(4), uint8(3), uint8(8),
+		"mmap", "brk", true, false, uint64(0x1000), uint64(0),
+	)
+
+	// KillProcess default with Log/Notify syscalls
+	f.Add(
+		uint8(0), uint8(5), uint8(6),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint8(0), uint8(6), uint8(5),
+		"read", "open", false, false, uint64(0), uint64(0),
+	)
 }
 
 type fuzzMergeConfig struct {

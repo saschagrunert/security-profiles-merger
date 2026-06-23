@@ -150,6 +150,10 @@ func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
 // on bare syscall slices without a profile-level DefaultAction, so no entries
 // are elided. Multi-name entries are normalized to one-name-per-entry and the
 // result is sorted by name.
+//
+// This function does not validate its inputs. Callers should ensure that
+// actions are known and that every entry has at least one name, or call
+// Validate on the enclosing profile first.
 func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 	strategy := mergeStrategy{pick: LessRestrictive, isIntersect: false}
 	leftMap := normalizeSyscallList(left, strategy)
@@ -184,6 +188,10 @@ func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 // function operates on bare syscall slices without a profile-level
 // DefaultAction. Multi-name entries are normalized to one-name-per-entry and
 // the result is sorted by name.
+//
+// This function does not validate its inputs. Callers should ensure that
+// actions are known and that every entry has at least one name, or call
+// Validate on the enclosing profile first.
 func IntersectSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 	strategy := mergeStrategy{pick: MoreRestrictive, isIntersect: true}
 	leftMap := normalizeSyscallList(left, strategy)
@@ -306,11 +314,9 @@ func mergeSyscallEntry(
 		return mergeMatchedSyscall(leftEntry, rightEntry, mergedDefault, strategy)
 	case leftEntry != nil:
 		return mergeUnmatchedSyscall(leftEntry, rightDefault, mergedDefault, pick)
-	case rightEntry != nil:
+	default:
 		return mergeUnmatchedSyscall(rightEntry, leftDefault, mergedDefault, pick)
 	}
-
-	return nil
 }
 
 func mergeMatchedSyscall(

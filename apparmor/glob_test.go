@@ -791,6 +791,52 @@ func TestIntersectFilesystemGlobMatch(t *testing.T) {
 	}
 }
 
+func TestIntersectFilesystemDifferentGlobs(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobIntersect(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/tmp/*.log"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/var/**"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+	)
+}
+
+func TestIntersectFilesystemLiteralLeftGlobRight(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobIntersect(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathUsrLibSO},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globUsrLib},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathUsrLibSO},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+	)
+}
+
 func TestIntersectFilesystemGlobNoMatch(t *testing.T) {
 	t.Parallel()
 
