@@ -66,10 +66,6 @@ func foldProfiles(
 	profiles []*Profile, mergeOp strategy,
 ) (*Profile, error) {
 	for _, profile := range profiles {
-		if profile == nil {
-			return nil, fmt.Errorf("validate: %w", ErrNilProfile)
-		}
-
 		err := validateEmptyPathsBeforeNormalize(profile)
 		if err != nil {
 			return nil, fmt.Errorf("validate: %w", err)

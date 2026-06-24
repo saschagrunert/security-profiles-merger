@@ -194,10 +194,11 @@ func fuzzMerge(
 		t.Fatalf("idempotent merge: %v", err)
 	}
 
-	if idempotent.DefaultAction != left.DefaultAction {
+	if !equalModuloErrnoRet(idempotent, left) {
 		t.Errorf(
-			"idempotent default = %q, want %q",
-			idempotent.DefaultAction, left.DefaultAction,
+			"Merge(X,X) should equal X modulo ErrnoRet\n  got:  %s\n  want: %s",
+			seccomp.FormatProfile(idempotent),
+			seccomp.FormatProfile(left),
 		)
 	}
 }

@@ -81,10 +81,10 @@ func TestExecutableRulesString(t *testing.T) {
 
 	rules := apparmor.ExecutableRules{
 		AllowedExecutables: []string{"/bin/cat", "/bin/ls"},
-		AllowedLibraries:   []string{"/lib/libc.so"},
+		AllowedLibraries:   []string{pathLibCStd},
 	}
 
-	const want = "exec:/bin/cat,/bin/ls lib:/lib/libc.so"
+	const want = "exec:/bin/cat,/bin/ls lib:" + pathLibCStd
 
 	if got := rules.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)

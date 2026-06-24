@@ -117,9 +117,13 @@ func addAppArmorFuzzSeeds(f *testing.F) {
 	)
 }
 
+type fuzzAppArmorCheckFunc func(*testing.T, *apparmor.Profile, *apparmor.Profile, *apparmor.Profile)
+
 type fuzzAppArmorMergeConfig struct {
-	merge    func(...*apparmor.Profile) (*apparmor.Profile, error)
-	checkCap func(*testing.T, *apparmor.Profile, *apparmor.Profile, *apparmor.Profile)
+	merge     func(...*apparmor.Profile) (*apparmor.Profile, error)
+	checkCap  fuzzAppArmorCheckFunc
+	checkNet  fuzzAppArmorCheckFunc
+	checkExec fuzzAppArmorCheckFunc
 }
 
 func fuzzAppArmorMerge(
@@ -145,6 +149,8 @@ func fuzzAppArmorMerge(
 	}
 
 	cfg.checkCap(t, result, left, right)
+	cfg.checkNet(t, result, left, right)
+	cfg.checkExec(t, result, left, right)
 
 	commuted, err := cfg.merge(right, left)
 	if err != nil {
@@ -155,23 +161,19 @@ func fuzzAppArmorMerge(
 		t.Error("Merge(L,R) != Merge(R,L)")
 	}
 
+	single, err := cfg.merge(left)
+	if err != nil {
+		t.Fatalf("single merge: %v", err)
+	}
+
 	idempotent, err := cfg.merge(left, left)
 	if err != nil {
 		t.Fatalf("idempotent merge: %v", err)
 	}
 
-	if idempotent.Capabilities == nil && left.Capabilities != nil {
-		t.Fatal("idempotent merge lost capabilities")
+	if !reflect.DeepEqual(idempotent, single) {
+		t.Error("Merge(X,X) should equal Merge(X)")
 	}
-}
-
-func capSet(caps []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(caps))
-	for _, cap := range caps {
-		set[cap] = struct{}{}
-	}
-
-	return set
 }
 
 func assertCapsSubset(
@@ -183,8 +185,8 @@ func assertCapsSubset(
 		return
 	}
 
-	leftCaps := capSet(left.Capabilities.AllowedCapabilities)
-	rightCaps := capSet(right.Capabilities.AllowedCapabilities)
+	leftCaps := stringSet(left.Capabilities.AllowedCapabilities)
+	rightCaps := stringSet(right.Capabilities.AllowedCapabilities)
 
 	for _, cap := range result.Capabilities.AllowedCapabilities {
 		_, inLeft := leftCaps[cap]
@@ -205,7 +207,7 @@ func assertCapsSuperset(
 		return
 	}
 
-	resultCaps := capSet(result.Capabilities.AllowedCapabilities)
+	resultCaps := stringSet(result.Capabilities.AllowedCapabilities)
 
 	for _, profiles := range []*apparmor.Profile{left, right} {
 		if profiles.Capabilities == nil {
@@ -220,12 +222,182 @@ func assertCapsSuperset(
 	}
 }
 
+func assertNetIntersect(
+	t *testing.T, result, left, right *apparmor.Profile,
+) {
+	t.Helper()
+
+	if result.Network == nil || left.Network == nil || right.Network == nil {
+		return
+	}
+
+	checkBoolAnd(t, "AllowRaw",
+		result.Network.AllowRaw, left.Network.AllowRaw, right.Network.AllowRaw,
+	)
+
+	if result.Network.Protocols == nil ||
+		left.Network.Protocols == nil ||
+		right.Network.Protocols == nil {
+		return
+	}
+
+	checkBoolAnd(t, "AllowTCP",
+		result.Network.Protocols.AllowTCP,
+		left.Network.Protocols.AllowTCP,
+		right.Network.Protocols.AllowTCP,
+	)
+	checkBoolAnd(t, "AllowUDP",
+		result.Network.Protocols.AllowUDP,
+		left.Network.Protocols.AllowUDP,
+		right.Network.Protocols.AllowUDP,
+	)
+}
+
+func assertNetUnion(
+	t *testing.T, result, left, right *apparmor.Profile,
+) {
+	t.Helper()
+
+	if result.Network == nil || left.Network == nil || right.Network == nil {
+		return
+	}
+
+	checkBoolOr(t, "AllowRaw",
+		result.Network.AllowRaw, left.Network.AllowRaw, right.Network.AllowRaw,
+	)
+
+	if result.Network.Protocols == nil ||
+		left.Network.Protocols == nil ||
+		right.Network.Protocols == nil {
+		return
+	}
+
+	checkBoolOr(t, "AllowTCP",
+		result.Network.Protocols.AllowTCP,
+		left.Network.Protocols.AllowTCP,
+		right.Network.Protocols.AllowTCP,
+	)
+	checkBoolOr(t, "AllowUDP",
+		result.Network.Protocols.AllowUDP,
+		left.Network.Protocols.AllowUDP,
+		right.Network.Protocols.AllowUDP,
+	)
+}
+
+func checkBoolAnd(t *testing.T, name string, result, left, right *bool) {
+	t.Helper()
+
+	if left == nil || right == nil || result == nil {
+		return
+	}
+
+	expected := *left && *right
+	if *result != expected {
+		t.Errorf(
+			"intersect %s = %v, want %v (AND of %v, %v)",
+			name, *result, expected, *left, *right,
+		)
+	}
+}
+
+func checkBoolOr(t *testing.T, name string, result, left, right *bool) {
+	t.Helper()
+
+	if left == nil || right == nil || result == nil {
+		return
+	}
+
+	expected := *left || *right
+	if *result != expected {
+		t.Errorf(
+			"union %s = %v, want %v (OR of %v, %v)",
+			name, *result, expected, *left, *right,
+		)
+	}
+}
+
+func assertExecSubset(
+	t *testing.T, result, left, right *apparmor.Profile,
+) {
+	t.Helper()
+
+	if result.Executable == nil {
+		return
+	}
+
+	leftExecs := stringSet(left.Executable.AllowedExecutables)
+	rightExecs := stringSet(right.Executable.AllowedExecutables)
+
+	for _, path := range result.Executable.AllowedExecutables {
+		_, inLeft := leftExecs[path]
+		_, inRight := rightExecs[path]
+
+		if !inLeft || !inRight {
+			t.Errorf("intersect result has executable %q not in both inputs", path)
+		}
+	}
+
+	leftLibs := stringSet(left.Executable.AllowedLibraries)
+	rightLibs := stringSet(right.Executable.AllowedLibraries)
+
+	for _, path := range result.Executable.AllowedLibraries {
+		_, inLeft := leftLibs[path]
+		_, inRight := rightLibs[path]
+
+		if !inLeft || !inRight {
+			t.Errorf("intersect result has library %q not in both inputs", path)
+		}
+	}
+}
+
+func assertExecSuperset(
+	t *testing.T, result, left, right *apparmor.Profile,
+) {
+	t.Helper()
+
+	if result.Executable == nil {
+		return
+	}
+
+	resultExecs := stringSet(result.Executable.AllowedExecutables)
+	resultLibs := stringSet(result.Executable.AllowedLibraries)
+
+	for _, input := range []*apparmor.Profile{left, right} {
+		if input.Executable == nil {
+			continue
+		}
+
+		for _, path := range input.Executable.AllowedExecutables {
+			if _, ok := resultExecs[path]; !ok {
+				t.Errorf("union result missing executable %q from input", path)
+			}
+		}
+
+		for _, path := range input.Executable.AllowedLibraries {
+			if _, ok := resultLibs[path]; !ok {
+				t.Errorf("union result missing library %q from input", path)
+			}
+		}
+	}
+}
+
+func stringSet(items []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		set[item] = struct{}{}
+	}
+
+	return set
+}
+
 func FuzzAppArmorIntersect(f *testing.F) {
 	addAppArmorFuzzSeeds(f)
 
 	cfg := fuzzAppArmorMergeConfig{
-		merge:    apparmor.Intersect,
-		checkCap: assertCapsSubset,
+		merge:     apparmor.Intersect,
+		checkCap:  assertCapsSubset,
+		checkNet:  assertNetIntersect,
+		checkExec: assertExecSubset,
 	}
 
 	f.Fuzz(func(
@@ -246,8 +418,10 @@ func FuzzAppArmorUnion(f *testing.F) {
 	addAppArmorFuzzSeeds(f)
 
 	cfg := fuzzAppArmorMergeConfig{
-		merge:    apparmor.Union,
-		checkCap: assertCapsSuperset,
+		merge:     apparmor.Union,
+		checkCap:  assertCapsSuperset,
+		checkNet:  assertNetUnion,
+		checkExec: assertExecSuperset,
 	}
 
 	f.Fuzz(func(
