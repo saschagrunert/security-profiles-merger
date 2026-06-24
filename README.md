@@ -2,6 +2,7 @@
 
 [![ci](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml/badge.svg)](https://github.com/saschagrunert/security-profiles-merger/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/saschagrunert/security-profiles-merger/graph/badge.svg)](https://codecov.io/gh/saschagrunert/security-profiles-merger)
+[![Go Reference](https://pkg.go.dev/badge/github.com/saschagrunert/security-profiles-merger.svg)](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger)
 
 A standalone Go library for merging security profiles
 ([seccomp](https://man7.org/linux/man-pages/man2/seccomp.2.html),
@@ -85,7 +86,8 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   Callers that need precise architecture intersection should populate the native
   architecture explicitly before merging.
 - Flags: intersection keeps only flags present in all profiles; union combines
-  all. An empty flag list means "no flags".
+  all. An empty flag list is treated as "unspecified" and defers to the other
+  profile during intersection, matching the architecture behavior.
 - Argument filters: during intersection, non-identical argument filters result
   in a conservative denial (`SCMP_ACT_KILL_PROCESS`). During union, argument
   filters from both sides are combined. When only one side has argument filters,
@@ -174,8 +176,12 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
   intersected (fewer handled rights = less restrictive). Path and network
   rules are unioned per key.
 - `landlock.Validate(profile *Profile) error` -
-  Checks that a profile contains only known access rights and has no duplicate
-  path or port rules.
+  Checks that a profile contains only known access rights, has no empty paths,
+  and has no duplicate path or port rules.
+- `landlock.ValidateStrict(profile *Profile) error` -
+  Performs all checks from Validate and additionally verifies that every rule's
+  access rights are a subset of the corresponding handled access set. Use
+  Validate for merge inputs and ValidateStrict for user-authored profiles.
 
 **Errors:**
 
@@ -185,6 +191,9 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
   access right.
 - `landlock.ErrDuplicateRule` - returned when a profile contains multiple rules
   for the same path or port.
+- `landlock.ErrEmptyPath` - returned when a path rule has an empty path string.
+- `landlock.ErrUnhandledRight` - returned by ValidateStrict when a rule grants
+  an access right not listed in the handled access set.
 
 **Types:**
 

@@ -245,6 +245,138 @@ func TestValidateDuplicateNetRule(t *testing.T) {
 	}
 }
 
+func TestValidateEmptyPath(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     "",
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty path")
+	}
+
+	if !errors.Is(err, landlock.ErrEmptyPath) {
+		t.Errorf("expected ErrEmptyPath, got: %v", err)
+	}
+}
+
+func TestValidateStrictInvalidProfile(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"bogus"},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for invalid profile")
+	}
+
+	if !errors.Is(err, landlock.ErrUnknownRight) {
+		t.Errorf("expected ErrUnknownRight, got: %v", err)
+	}
+}
+
+func TestValidateStrictValid(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: []landlock.NetRule{{
+			Port: 80,
+			AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+			},
+		}},
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictUnhandledPathRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for unhandled path right")
+	}
+
+	if !errors.Is(err, landlock.ErrUnhandledRight) {
+		t.Errorf("expected ErrUnhandledRight, got: %v", err)
+	}
+}
+
+func TestValidateStrictUnhandledNetRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		PathRules: nil,
+		NetRules: []landlock.NetRule{{
+			Port: 80,
+			AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+				landlock.NetAccessConnectTCP,
+			},
+		}},
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for unhandled net right")
+	}
+
+	if !errors.Is(err, landlock.ErrUnhandledRight) {
+		t.Errorf("expected ErrUnhandledRight, got: %v", err)
+	}
+}
+
 func TestValidateAllKnownFSRights(t *testing.T) {
 	t.Parallel()
 

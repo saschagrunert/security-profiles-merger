@@ -700,7 +700,7 @@ func TestNilProfileAtIndex(t *testing.T) {
 	}
 }
 
-func TestMergeDoesNotMutateInputs(t *testing.T) {
+func TestIntersectDoesNotMutateInputs(t *testing.T) {
 	t.Parallel()
 
 	left := buildMutationTestProfile()
@@ -716,6 +716,22 @@ func TestMergeDoesNotMutateInputs(t *testing.T) {
 	assertMutationProfileUnchanged(t, left, &snap)
 }
 
+func TestUnionDoesNotMutateInputs(t *testing.T) {
+	t.Parallel()
+
+	left := buildMutationTestProfile()
+	right := buildMutationTestRight()
+
+	snap := snapshotMutationProfile(left)
+
+	_, err := landlock.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertMutationProfileUnchanged(t, left, &snap)
+}
+
 func buildMutationTestProfile() *landlock.Profile {
 	return &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{
@@ -724,6 +740,7 @@ func buildMutationTestProfile() *landlock.Profile {
 		},
 		HandledAccessNet: []landlock.NetAccessRight{
 			landlock.NetAccessBindTCP,
+			landlock.NetAccessConnectTCP,
 		},
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
@@ -856,6 +873,7 @@ func TestIntersectDisjointPathPartiallyHandled(t *testing.T) {
 	left := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{
 			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
 		},
 		HandledAccessNet: nil,
 		PathRules: []landlock.PathRule{{
@@ -884,7 +902,7 @@ func TestIntersectDisjointPathPartiallyHandled(t *testing.T) {
 
 	if len(result.PathRules) != 1 {
 		t.Fatalf(
-			"expected 1 path rule (write_file not handled), got %d",
+			"expected 1 path rule (write_file not handled by right), got %d",
 			len(result.PathRules),
 		)
 	}
@@ -909,7 +927,10 @@ func buildUnsortedProfile() *landlock.Profile {
 			landlock.FSAccessWriteFile,
 			landlock.FSAccessReadFile,
 		},
-		HandledAccessNet: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessConnectTCP,
+			landlock.NetAccessBindTCP,
+		},
 		PathRules: []landlock.PathRule{
 			{Path: pathVar, AccessFS: []landlock.FSAccessRight{
 				landlock.FSAccessReadFile,
@@ -1042,7 +1063,7 @@ func TestIntersectAssociativity(t *testing.T) {
 
 	profileC := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{
-			landlock.FSAccessReadFile,
+			landlock.FSAccessReadFile, landlock.FSAccessExecute,
 		},
 		HandledAccessNet: nil,
 		PathRules: []landlock.PathRule{{
@@ -1086,7 +1107,7 @@ func TestUnionAssociativity(t *testing.T) {
 
 	profileC := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{
-			landlock.FSAccessReadFile,
+			landlock.FSAccessReadFile, landlock.FSAccessExecute,
 		},
 		HandledAccessNet: nil,
 		PathRules: []landlock.PathRule{{

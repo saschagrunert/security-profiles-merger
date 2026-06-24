@@ -625,8 +625,8 @@ func TestIntersectFlagsOneEmpty(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Flags) != 0 {
-		t.Errorf("flags = %v, want empty (intersect with empty)", result.Flags)
+	if len(result.Flags) != 1 || result.Flags[0] != specs.LinuxSeccompFlagLog {
+		t.Errorf("flags = %v, want [Log] (empty defers to other)", result.Flags)
 	}
 }
 
@@ -2003,4 +2003,117 @@ func seccompEqualModuloErrnoRet(
 	}
 
 	return true
+}
+
+func TestUnionSyscallsWithSameArgs(t *testing.T) {
+	t.Parallel()
+
+	args := []specs.LinuxSeccompArg{{
+		Index: 0, Value: 1, Op: specs.OpEqualTo,
+	}}
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(result[0].Args))
+	}
+}
+
+func TestUnionSyscallsDropsArgsWhenOneSideHasNone(t *testing.T) {
+	t.Parallel()
+
+	args := []specs.LinuxSeccompArg{{
+		Index: 0, Value: 1, Op: specs.OpEqualTo,
+	}}
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 0 {
+		t.Errorf("expected no args (union drops when one side has none), got %v", result[0].Args)
+	}
+}
+
+func TestIntersectSyscallsWithSameArgs(t *testing.T) {
+	t.Parallel()
+
+	args := []specs.LinuxSeccompArg{{
+		Index: 0, Value: 1, Op: specs.OpEqualTo,
+	}}
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 1 {
+		t.Fatalf("expected 1 arg preserved, got %d", len(result[0].Args))
+	}
+}
+
+func TestIntersectSyscallsConservativeDenialOnDifferentArgs(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+		}},
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 2, Op: specs.OpEqualTo}},
+		}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if result[0].Action != specs.ActKillProcess {
+		t.Errorf("expected conservative denial (KILL_PROCESS), got %s", result[0].Action)
+	}
+
+	if len(result[0].Args) != 0 {
+		t.Errorf("expected no args after conservative denial, got %v", result[0].Args)
+	}
+}
+
+func TestIntersectSyscallsPreservesArgsFromOneSide(t *testing.T) {
+	t.Parallel()
+
+	args := []specs.LinuxSeccompArg{{
+		Index: 0, Value: 1, Op: specs.OpEqualTo,
+	}}
+
+	result := seccomp.IntersectSyscalls(
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow, Args: args}},
+		[]specs.LinuxSyscall{{Names: []string{syscallRead}, Action: specs.ActAllow}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 1 {
+		t.Errorf("expected args preserved from the constrained side, got %d", len(result[0].Args))
+	}
 }
