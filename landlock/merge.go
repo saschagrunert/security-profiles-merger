@@ -20,6 +20,7 @@ package landlock
 import (
 	"cmp"
 	"fmt"
+	"path"
 	"slices"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
@@ -71,7 +72,12 @@ func foldProfiles(
 		}
 	}
 
-	result, err := merge.Fold(profiles, cloneProfile, func(a, b *Profile) *Profile {
+	normalized := make([]*Profile, len(profiles))
+	for idx, profile := range profiles {
+		normalized[idx] = normalizeProfile(profile)
+	}
+
+	result, err := merge.Fold(normalized, cloneProfile, func(a, b *Profile) *Profile {
 		return mergeTwo(a, b, mergeOp)
 	})
 	if err != nil {
@@ -278,8 +284,8 @@ func unionRules[Rule any, Key comparable, Right comparable](
 func pathRuleKey(rule PathRule) string             { return rule.Path }
 func pathRuleAccess(rule PathRule) []FSAccessRight { return rule.AccessFS }
 
-func newPathRule(path string, access []FSAccessRight) PathRule {
-	return PathRule{Path: path, AccessFS: access}
+func newPathRule(rulePath string, access []FSAccessRight) PathRule {
+	return PathRule{Path: rulePath, AccessFS: access}
 }
 
 // Rule accessor and builder functions for NetRule.
@@ -378,6 +384,16 @@ func clonePathRules(rules []PathRule) []PathRule {
 	}
 
 	return cloned
+}
+
+func normalizeProfile(profile *Profile) *Profile {
+	clone := cloneProfile(profile)
+
+	for idx := range clone.PathRules {
+		clone.PathRules[idx].Path = path.Clean(clone.PathRules[idx].Path)
+	}
+
+	return clone
 }
 
 func cloneNetRules(rules []NetRule) []NetRule {

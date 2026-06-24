@@ -58,7 +58,11 @@ func formatSyscall(syscall specs.LinuxSyscall) string {
 
 	args := make([]string, len(syscall.Args))
 	for idx, arg := range syscall.Args {
-		args[idx] = fmt.Sprintf("[%d]%s:%d", arg.Index, arg.Op, arg.Value)
+		if arg.Op == specs.OpMaskedEqual && arg.ValueTwo != 0 {
+			args[idx] = fmt.Sprintf("[%d]%s:%d:%d", arg.Index, arg.Op, arg.Value, arg.ValueTwo)
+		} else {
+			args[idx] = fmt.Sprintf("[%d]%s:%d", arg.Index, arg.Op, arg.Value)
+		}
 	}
 
 	return fmt.Sprintf("%s(%s)->%s", names, strings.Join(args, ","), syscall.Action)

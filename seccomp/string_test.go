@@ -91,6 +91,29 @@ func TestFormatProfileWithArgs(t *testing.T) {
 	}
 }
 
+func TestFormatProfileWithValueTwo(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{"clone"},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 0x10000, ValueTwo: 0xFF, Op: specs.OpMaskedEqual},
+				},
+			},
+		},
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO clone([0]SCMP_CMP_MASKED_EQ:65536:255)->SCMP_ACT_ALLOW}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
 func TestFormatProfileMultipleArchitectures(t *testing.T) {
 	t.Parallel()
 

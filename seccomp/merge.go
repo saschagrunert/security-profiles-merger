@@ -49,6 +49,9 @@ var (
 // need precise architecture intersection should populate the native
 // architecture explicitly before merging.
 //
+// An empty Flags list is likewise treated as "unspecified" and defers to the
+// other profile, consistent with the architecture handling.
+//
 // This implements the profile merging semantics defined in KEP-6061 for CRI
 // runtimes merging OCI-pulled profiles with node baselines.
 func Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error) {
@@ -124,13 +127,25 @@ func mergeTwo(
 
 	if strategy.isIntersect {
 		merged.Architectures = intersectArchitectures(left.Architectures, right.Architectures)
-		merged.Flags = merge.IntersectSlice(left.Flags, right.Flags)
+		merged.Flags = intersectFlags(left.Flags, right.Flags)
 	} else {
 		merged.Architectures = merge.UnionSlice(left.Architectures, right.Architectures)
 		merged.Flags = merge.UnionSlice(left.Flags, right.Flags)
 	}
 
 	return merged
+}
+
+func intersectFlags(left, right []specs.LinuxSeccompFlag) []specs.LinuxSeccompFlag {
+	if len(left) == 0 {
+		return slices.Clone(right)
+	}
+
+	if len(right) == 0 {
+		return slices.Clone(left)
+	}
+
+	return merge.IntersectSlice(left, right)
 }
 
 func intersectArchitectures(left, right []specs.Arch) []specs.Arch {

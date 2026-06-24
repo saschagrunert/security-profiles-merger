@@ -88,10 +88,10 @@ func TestUnionGlobStar(t *testing.T) {
 			want:  []string{globUsrLib},
 		},
 		{
-			name:  "double star matches empty suffix",
+			name:  "double star does not subsume normalized directory",
 			left:  []string{globUsrLib},
 			right: []string{"/usr/lib/"},
-			want:  []string{globUsrLib},
+			want:  []string{"/usr/lib", globUsrLib},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
