@@ -82,24 +82,36 @@ func (f FilesystemRules) String() string {
 func (n NetworkRules) String() string {
 	var parts []string
 
-	if n.AllowRaw != nil && *n.AllowRaw {
-		parts = append(parts, "raw")
+	if n.AllowRaw != nil {
+		parts = append(parts, formatBool("raw", *n.AllowRaw))
 	}
 
 	if n.Protocols != nil {
-		if n.Protocols.AllowTCP != nil && *n.Protocols.AllowTCP {
-			parts = append(parts, "tcp")
+		if n.Protocols.AllowTCP != nil {
+			parts = append(parts, formatBool("tcp", *n.Protocols.AllowTCP))
 		}
 
-		if n.Protocols.AllowUDP != nil && *n.Protocols.AllowUDP {
-			parts = append(parts, "udp")
+		if n.Protocols.AllowUDP != nil {
+			parts = append(parts, formatBool("udp", *n.Protocols.AllowUDP))
 		}
 	}
 
 	return "net:" + strings.Join(parts, ",")
 }
 
+func formatBool(name string, val bool) string {
+	if val {
+		return name
+	}
+
+	return "!" + name
+}
+
 // String returns a human-readable representation of the capability rules.
 func (c CapabilityRules) String() string {
+	if len(c.AllowedCapabilities) == 0 {
+		return "caps:none"
+	}
+
 	return "caps:" + strings.Join(c.AllowedCapabilities, ",")
 }

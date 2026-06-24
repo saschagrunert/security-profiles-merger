@@ -84,6 +84,10 @@ const (
 
 	// FSAccessIOCTLDev allows ioctl on device files.
 	FSAccessIOCTLDev FSAccessRight = "ioctl_dev"
+
+	// FSAccessResolveUnix allows resolving/connecting to pathname-based
+	// UNIX domain sockets.
+	FSAccessResolveUnix FSAccessRight = "resolve_unix"
 )
 
 // NetAccessRight represents a Landlock network access right.
@@ -95,6 +99,12 @@ const (
 
 	// NetAccessConnectTCP allows connecting a TCP socket.
 	NetAccessConnectTCP NetAccessRight = "connect_tcp"
+
+	// NetAccessBindUDP allows binding a UDP socket.
+	NetAccessBindUDP NetAccessRight = "bind_udp"
+
+	// NetAccessConnectSendUDP allows connecting or sending to a UDP socket.
+	NetAccessConnectSendUDP NetAccessRight = "connect_send_udp"
 )
 
 // PathRule defines the access rights allowed for a specific path hierarchy.

@@ -163,3 +163,50 @@ func TestValidateMultipleDuplicates(t *testing.T) {
 		t.Errorf("error should mention %s: %v", pathTmp, err)
 	}
 }
+
+func TestValidateEmptyPathInReadOnly(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{""},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty path")
+	}
+
+	if !errors.Is(err, apparmor.ErrEmptyPath) {
+		t.Errorf("expected ErrEmptyPath, got: %v", err)
+	}
+}
+
+func TestValidateEmptyPathInExecutables(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{"/bin/bash", ""},
+			AllowedLibraries:   nil,
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty executable path")
+	}
+
+	if !errors.Is(err, apparmor.ErrEmptyPath) {
+		t.Errorf("expected ErrEmptyPath, got: %v", err)
+	}
+}

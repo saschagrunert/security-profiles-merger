@@ -36,6 +36,10 @@ var (
 	// ErrUnhandledRight is returned when a rule grants an access right
 	// that is not listed in the profile's handled access set.
 	ErrUnhandledRight = errors.New("rule grants unhandled access right")
+
+	// ErrDuplicateRight is returned when the same access right appears
+	// more than once in a handled set or rule.
+	ErrDuplicateRight = errors.New("duplicate access right")
 )
 
 // Validate checks that a Landlock profile contains only known access
@@ -55,6 +59,16 @@ func Validate(profile *Profile) error {
 	}
 
 	err = validateRights("HandledAccessNet", profile.HandledAccessNet, isKnownNetRight)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDuplicateRights("HandledAccessFS", profile.HandledAccessFS)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDuplicateRights("HandledAccessNet", profile.HandledAccessNet)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -89,6 +103,24 @@ func validateRights[T ~string](
 	return errors.Join(errs...)
 }
 
+// validateEmptyPathsBeforeNormalize catches empty paths before
+// path.Clean("") turns them into ".", which would bypass Validate.
+func validateEmptyPathsBeforeNormalize(profile *Profile) error {
+	var errs []error
+
+	for idx, rule := range profile.PathRules {
+		if rule.Path == "" {
+			errs = append(errs, fmt.Errorf("PathRules[%d]: %w", idx, ErrEmptyPath))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+// validatePathRules checks path rules for empty paths, unknown rights, and
+// duplicate rights. The empty-path check here covers direct Validate callers;
+// foldProfiles also runs validateEmptyPathsBeforeNormalize to catch empty
+// paths before path.Clean turns them into ".".
 func validatePathRules(rules []PathRule) []error {
 	var errs []error
 
@@ -97,9 +129,14 @@ func validatePathRules(rules []PathRule) []error {
 			errs = append(errs, fmt.Errorf("PathRules[%d]: %w", idx, ErrEmptyPath))
 		}
 
-		err := validateRights(
-			fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS, isKnownFSRight,
-		)
+		context := fmt.Sprintf("PathRules[%d]", idx)
+
+		err := validateRights(context, rule.AccessFS, isKnownFSRight)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		err = validateDuplicateRights(context, rule.AccessFS)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -112,9 +149,14 @@ func validateNetRules(rules []NetRule) []error {
 	var errs []error
 
 	for idx, rule := range rules {
-		err := validateRights(
-			fmt.Sprintf("NetRules[%d]", idx), rule.AccessNet, isKnownNetRight,
-		)
+		context := fmt.Sprintf("NetRules[%d]", idx)
+
+		err := validateRights(context, rule.AccessNet, isKnownNetRight)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		err = validateDuplicateRights(context, rule.AccessNet)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -140,7 +182,8 @@ func isKnownFSRight(right FSAccessRight) bool {
 		FSAccessMakeBlock,
 		FSAccessRefer,
 		FSAccessTruncate,
-		FSAccessIOCTLDev:
+		FSAccessIOCTLDev,
+		FSAccessResolveUnix:
 		return true
 	default:
 		return false
@@ -149,7 +192,8 @@ func isKnownFSRight(right FSAccessRight) bool {
 
 func isKnownNetRight(right NetAccessRight) bool {
 	switch right {
-	case NetAccessBindTCP, NetAccessConnectTCP:
+	case NetAccessBindTCP, NetAccessConnectTCP,
+		NetAccessBindUDP, NetAccessConnectSendUDP:
 		return true
 	default:
 		return false
@@ -225,6 +269,24 @@ func validateHandled[T ~string](
 				"%s: right %q: %w", context, right, ErrUnhandledRight,
 			))
 		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validateDuplicateRights[T ~string](context string, rights []T) error {
+	seen := make(map[T]struct{}, len(rights))
+
+	var errs []error
+
+	for _, right := range rights {
+		if _, ok := seen[right]; ok {
+			errs = append(errs, fmt.Errorf(
+				"%s: right %q: %w", context, right, ErrDuplicateRight,
+			))
+		}
+
+		seen[right] = struct{}{}
 	}
 
 	return errors.Join(errs...)

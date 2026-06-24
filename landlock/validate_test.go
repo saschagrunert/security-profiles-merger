@@ -124,7 +124,7 @@ func TestValidateUnknownNetRuleRight(t *testing.T) {
 		PathRules:        nil,
 		NetRules: []landlock.NetRule{{
 			Port:      80,
-			AccessNet: []landlock.NetAccessRight{"bind_udp"},
+			AccessNet: []landlock.NetAccessRight{"bind_bogus"},
 		}},
 	}
 
@@ -397,6 +397,7 @@ func TestValidateAllKnownFSRights(t *testing.T) {
 		landlock.FSAccessRefer,
 		landlock.FSAccessTruncate,
 		landlock.FSAccessIOCTLDev,
+		landlock.FSAccessResolveUnix,
 	}
 
 	profile := &landlock.Profile{
@@ -409,5 +410,77 @@ func TestValidateAllKnownFSRights(t *testing.T) {
 	err := landlock.Validate(profile)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateAllKnownNetRights(t *testing.T) {
+	t.Parallel()
+
+	all := []landlock.NetAccessRight{
+		landlock.NetAccessBindTCP,
+		landlock.NetAccessConnectTCP,
+		landlock.NetAccessBindUDP,
+		landlock.NetAccessConnectSendUDP,
+	}
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: all,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDuplicateFSRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate FS right in handled set")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRight) {
+		t.Errorf("expected ErrDuplicateRight, got: %v", err)
+	}
+}
+
+func TestValidateDuplicateNetRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules: []landlock.NetRule{{
+			Port: 80,
+			AccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessBindTCP,
+				landlock.NetAccessBindTCP,
+			},
+		}},
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate net right in rule")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRight) {
+		t.Errorf("expected ErrDuplicateRight, got: %v", err)
 	}
 }

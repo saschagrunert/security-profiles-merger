@@ -66,7 +66,11 @@ func foldProfiles(
 	profiles []*Profile, mergeOp strategy,
 ) (*Profile, error) {
 	for _, profile := range profiles {
-		err := Validate(profile)
+		if profile == nil {
+			return nil, fmt.Errorf("validate: %w", ErrNilProfile)
+		}
+
+		err := validateEmptyPathsBeforeNormalize(profile)
 		if err != nil {
 			return nil, fmt.Errorf("validate: %w", err)
 		}
@@ -75,6 +79,13 @@ func foldProfiles(
 	normalized := make([]*Profile, len(profiles))
 	for idx, profile := range profiles {
 		normalized[idx] = normalizeProfile(profile)
+	}
+
+	for _, profile := range normalized {
+		err := Validate(profile)
+		if err != nil {
+			return nil, fmt.Errorf("validate: %w", err)
+		}
 	}
 
 	result, err := merge.Fold(normalized, cloneProfile, func(a, b *Profile) *Profile {
@@ -256,10 +267,11 @@ func unionRules[Rule any, Key comparable, Right comparable](
 
 	for ruleKey, leftAccess := range leftMap {
 		if rightAccess, ok := rightMap[ruleKey]; ok {
-			result = append(result, build(
-				ruleKey, merge.UnionSlice(leftAccess, rightAccess),
-			))
-		} else {
+			merged := merge.UnionSlice(leftAccess, rightAccess)
+			if len(merged) > 0 {
+				result = append(result, build(ruleKey, merged))
+			}
+		} else if len(leftAccess) > 0 {
 			result = append(result, build(
 				ruleKey, slices.Clone(leftAccess),
 			))
@@ -271,9 +283,11 @@ func unionRules[Rule any, Key comparable, Right comparable](
 			continue
 		}
 
-		result = append(result, build(
-			ruleKey, slices.Clone(rightAccess),
-		))
+		if len(rightAccess) > 0 {
+			result = append(result, build(
+				ruleKey, slices.Clone(rightAccess),
+			))
+		}
 	}
 
 	return result

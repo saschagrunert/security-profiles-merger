@@ -36,7 +36,7 @@ func TestMoreRestrictive(t *testing.T) {
 		{"allow vs kill", specs.ActAllow, specs.ActKillProcess, specs.ActKillProcess},
 		{"errno vs allow", specs.ActErrno, specs.ActAllow, specs.ActErrno},
 		{"trap vs errno", specs.ActTrap, specs.ActErrno, specs.ActTrap},
-		{"trace vs notify", specs.ActTrace, specs.ActNotify, specs.ActTrace},
+		{"notify vs trace", specs.ActNotify, specs.ActTrace, specs.ActNotify},
 		{"log vs allow", specs.ActLog, specs.ActAllow, specs.ActLog},
 		{"same action", specs.ActErrno, specs.ActErrno, specs.ActErrno},
 		{
@@ -88,6 +88,25 @@ func TestLessRestrictive(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestActKillAndActKillThreadEquivalent(t *testing.T) {
+	t.Parallel()
+
+	got := seccomp.MoreRestrictive(specs.ActKill, specs.ActKillThread)
+	if got != specs.ActKill {
+		t.Errorf("MoreRestrictive(ActKill, ActKillThread) = %q, want %q", got, specs.ActKill)
+	}
+
+	got = seccomp.MoreRestrictive(specs.ActKillThread, specs.ActKill)
+	if got != specs.ActKillThread {
+		t.Errorf("MoreRestrictive(ActKillThread, ActKill) = %q, want %q", got, specs.ActKillThread)
+	}
+
+	got = seccomp.LessRestrictive(specs.ActKill, specs.ActKillThread)
+	if got != specs.ActKill {
+		t.Errorf("LessRestrictive(ActKill, ActKillThread) = %q, want %q", got, specs.ActKill)
 	}
 }
 

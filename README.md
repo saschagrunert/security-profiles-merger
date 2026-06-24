@@ -99,7 +99,7 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
 
 **Action restrictiveness ordering** (most to least restrictive):
 
-`KILL_PROCESS > KILL_THREAD > TRAP > ERRNO > TRACE > NOTIFY > LOG > ALLOW`
+`KILL_PROCESS > KILL_THREAD > TRAP > ERRNO > NOTIFY > TRACE > LOG > ALLOW`
 
 Unknown actions are treated as maximally restrictive.
 
@@ -129,6 +129,7 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.ErrNilProfile` - returned when a nil profile is provided.
 - `apparmor.ErrDuplicatePath` - returned when a path appears in multiple
   filesystem categories.
+- `apparmor.ErrEmptyPath` - returned when a path rule contains an empty string.
 
 **Types:**
 
@@ -194,12 +195,15 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 - `landlock.ErrEmptyPath` - returned when a path rule has an empty path string.
 - `landlock.ErrUnhandledRight` - returned by ValidateStrict when a rule grants
   an access right not listed in the handled access set.
+- `landlock.ErrDuplicateRight` - returned when the same access right appears
+  more than once in a handled set or rule.
 
 **Types:**
 
 - `Profile` - Top-level Landlock ruleset containing handled access sets and rules.
 - `FSAccessRight` - Filesystem access right (execute, read_file, write_file, etc.).
-- `NetAccessRight` - Network access right (bind_tcp, connect_tcp).
+- `NetAccessRight` - Network access right (bind_tcp, connect_tcp, bind_udp,
+  connect_send_udp).
 - `PathRule` - Per-path filesystem access rights.
 - `NetRule` - Per-port network access rights.
 
