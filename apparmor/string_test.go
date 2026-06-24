@@ -52,7 +52,7 @@ func TestProfileString(t *testing.T) {
 	}
 
 	const want = "Profile{exec:/usr/bin/ls lib:/usr/lib/libc.so " +
-		"r:/etc/passwd rw:/tmp net:raw,tcp caps:NET_ADMIN,SYS_TIME}"
+		"r:/etc/passwd rw:/tmp net:raw,tcp,!udp caps:NET_ADMIN,SYS_TIME}"
 
 	if got := profile.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)
@@ -122,7 +122,7 @@ func TestNetworkRulesString(t *testing.T) {
 		},
 	}
 
-	const want = "net:tcp,udp"
+	const want = "net:!raw,tcp,udp"
 
 	if got := rules.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)

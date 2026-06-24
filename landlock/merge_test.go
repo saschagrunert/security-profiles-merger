@@ -17,6 +17,7 @@ limitations under the License.
 package landlock_test
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -1161,4 +1162,64 @@ func TestIntersectSortedOutput(t *testing.T) {
 	}
 
 	assertSorted(t, result)
+}
+
+func TestIntersectEmptyPathRejected(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     "",
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	_, err := landlock.Intersect(profile)
+	if err == nil {
+		t.Fatal("expected error for empty path through merge")
+	}
+
+	if !errors.Is(err, landlock.ErrEmptyPath) {
+		t.Errorf("expected ErrEmptyPath, got: %v", err)
+	}
+}
+
+func TestUnionEmptyAccessDropsRule(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{
+			{Path: pathEtc, AccessFS: []landlock.FSAccessRight{}},
+		},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{
+			{Path: pathEtc, AccessFS: []landlock.FSAccessRight{}},
+		},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 0 {
+		t.Errorf("expected no path rules for empty access union, got %d", len(result.PathRules))
+	}
 }

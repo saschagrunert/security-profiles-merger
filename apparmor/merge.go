@@ -63,7 +63,11 @@ type strategy interface {
 
 func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 	for _, profile := range profiles {
-		err := Validate(profile)
+		if profile == nil {
+			return nil, fmt.Errorf("validate: %w", ErrNilProfile)
+		}
+
+		err := validateEmptyPathsInProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("validate: %w", err)
 		}
@@ -72,6 +76,13 @@ func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 	normalized := make([]*Profile, len(profiles))
 	for idx, profile := range profiles {
 		normalized[idx] = normalizeProfile(profile)
+	}
+
+	for _, profile := range normalized {
+		err := Validate(profile)
+		if err != nil {
+			return nil, fmt.Errorf("validate: %w", err)
+		}
 	}
 
 	result, err := merge.Fold(normalized, cloneProfile, func(a, b *Profile) *Profile {

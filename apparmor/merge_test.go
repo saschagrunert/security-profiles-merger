@@ -17,6 +17,7 @@ limitations under the License.
 package apparmor_test
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -1496,5 +1497,29 @@ func assertAppArmorAssociative(
 
 	if !reflect.DeepEqual(leftAssoc, rightAssoc) {
 		t.Error("Merge(A, Merge(B,C)) != Merge(Merge(A,B), C)")
+	}
+}
+
+func TestIntersectEmptyPathRejected(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{""},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	_, err := apparmor.Intersect(profile)
+	if err == nil {
+		t.Fatal("expected error for empty path through merge")
+	}
+
+	if !errors.Is(err, apparmor.ErrEmptyPath) {
+		t.Errorf("expected ErrEmptyPath, got: %v", err)
 	}
 }

@@ -21,9 +21,14 @@ import (
 	"fmt"
 )
 
-// ErrDuplicatePath is returned when a path appears in multiple
-// filesystem rule categories within the same profile.
-var ErrDuplicatePath = errors.New("duplicate path across filesystem categories")
+var (
+	// ErrDuplicatePath is returned when a path appears in multiple
+	// filesystem rule categories within the same profile.
+	ErrDuplicatePath = errors.New("duplicate path across filesystem categories")
+
+	// ErrEmptyPath is returned when a path rule contains an empty string.
+	ErrEmptyPath = errors.New("empty path")
+)
 
 // Validate checks an AppArmor profile for structural issues.
 // Capability names are not validated against a fixed set because the
@@ -39,14 +44,64 @@ func Validate(profile *Profile) error {
 		return ErrNilProfile
 	}
 
+	var errs []error
+
+	err := validateEmptyPathsInProfile(profile)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	if profile.Filesystem != nil {
 		err := validateFilesystemPaths(profile.Filesystem)
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
+}
+
+func validateEmptyPaths(context string, paths []string) []error {
+	var errs []error
+
+	for idx, path := range paths {
+		if path == "" {
+			errs = append(errs, fmt.Errorf(
+				"%s[%d]: %w", context, idx, ErrEmptyPath,
+			))
+		}
+	}
+
+	return errs
+}
+
+// validateEmptyPathsInProfile checks for empty paths before normalization,
+// since path.Clean("") returns "." which would bypass Validate's check.
+func validateEmptyPathsInProfile(profile *Profile) error {
+	var errs []error
+
+	if profile.Executable != nil {
+		errs = append(errs, validateEmptyPaths(
+			"AllowedExecutables", profile.Executable.AllowedExecutables,
+		)...)
+		errs = append(errs, validateEmptyPaths(
+			"AllowedLibraries", profile.Executable.AllowedLibraries,
+		)...)
+	}
+
+	if profile.Filesystem != nil {
+		errs = append(errs, validateEmptyPaths(
+			"ReadOnlyPaths", profile.Filesystem.ReadOnlyPaths,
+		)...)
+		errs = append(errs, validateEmptyPaths(
+			"WriteOnlyPaths", profile.Filesystem.WriteOnlyPaths,
+		)...)
+		errs = append(errs, validateEmptyPaths(
+			"ReadWritePaths", profile.Filesystem.ReadWritePaths,
+		)...)
+	}
+
+	return errors.Join(errs...)
 }
 
 func validateFilesystemPaths(rules *FilesystemRules) error {

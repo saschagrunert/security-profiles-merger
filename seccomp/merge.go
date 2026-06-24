@@ -340,7 +340,7 @@ func mergeMatchedSyscall(
 	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
 	merged := pickSyscall(left, right, strategy)
-	if merged.Action != mergedDefault || len(merged.Args) > 0 {
+	if !actionsEquivalent(merged.Action, mergedDefault) || len(merged.Args) > 0 {
 		return merged
 	}
 
@@ -353,12 +353,15 @@ func mergeUnmatchedSyscall(
 	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *specs.LinuxSyscall {
 	effective := pick(entry.Action, otherDefault)
-	if effective != mergedDefault || len(entry.Args) > 0 {
+	if !actionsEquivalent(effective, mergedDefault) || len(entry.Args) > 0 {
 		// When the picked action came from the other side's default,
 		// clear ErrnoRet because the default action's ErrnoRet is
 		// already captured in the profile-level DefaultErrnoRet.
+		// Safe to use actionsEquivalent here: pick() returns entry.Action
+		// when levels tie, and the only same-level pair (ActKill/ActKillThread)
+		// ignores ErrnoRet.
 		var errnoRet *uint
-		if effective == entry.Action {
+		if actionsEquivalent(effective, entry.Action) {
 			errnoRet = copyErrnoRet(entry.ErrnoRet)
 		}
 
@@ -385,6 +388,7 @@ func pickSyscall(
 		Action: pickedAction,
 	}
 
+	// Uses == (not actionsEquivalent) to check which literal input pick returned.
 	if pickedAction == left.Action {
 		result.ErrnoRet = copyErrnoRet(left.ErrnoRet)
 	} else {
@@ -525,15 +529,15 @@ func mergeErrnoRet(
 	leftAction, rightAction specs.LinuxSeccompAction,
 	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *uint {
-	// When both actions are equal, leftmost wins unconditionally,
+	// When both actions are equivalent, leftmost wins unconditionally,
 	// even if left's ErrnoRet is nil (meaning "no errno override").
-	if leftAction == rightAction {
+	if actionsEquivalent(leftAction, rightAction) {
 		return copyErrnoRet(leftRet)
 	}
 
 	picked := pick(leftAction, rightAction)
 
-	if picked == leftAction {
+	if actionsEquivalent(picked, leftAction) {
 		return copyErrnoRet(leftRet)
 	}
 
