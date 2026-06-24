@@ -84,7 +84,7 @@ func TestFormatProfileWithArgs(t *testing.T) {
 		},
 	}
 
-	const want = "Profile{default:SCMP_ACT_ERRNO clone([0]SCMP_CMP_MASKED_EQ:65536)->SCMP_ACT_ALLOW}"
+	const want = "Profile{default:SCMP_ACT_ERRNO clone([0]SCMP_CMP_MASKED_EQ:65536:0)->SCMP_ACT_ALLOW}"
 
 	if got := seccomp.FormatProfile(profile); got != want {
 		t.Errorf("FormatProfile() = %q, want %q", got, want)
@@ -123,6 +123,91 @@ func TestFormatProfileMultipleArchitectures(t *testing.T) {
 	}
 
 	const want = "Profile{default:SCMP_ACT_ERRNO arch:SCMP_ARCH_X86_64,SCMP_ARCH_ARM}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileWithDefaultErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoRet := uint(38)
+	profile := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: &errnoRet,
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO defaultErrno:38}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileWithFlags(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags:         []specs.LinuxSeccompFlag{"SECCOMP_FILTER_FLAG_LOG"},
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO flags:SECCOMP_FILTER_FLAG_LOG}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileWithListener(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction:    specs.ActErrno,
+		ListenerPath:     "/run/seccomp-agent.sock",
+		ListenerMetadata: "container-id=abc",
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO " +
+		"listener:/run/seccomp-agent.sock listenerMeta:container-id=abc}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileWithSyscallErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoRet := uint(1)
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActAllow,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:    []string{"mount"},
+				Action:   specs.ActErrno,
+				ErrnoRet: &errnoRet,
+			},
+		},
+	}
+
+	const want = "Profile{default:SCMP_ACT_ALLOW mount->SCMP_ACT_ERRNO(errno:1)}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileListenerMetadataWithoutPath(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction:    specs.ActErrno,
+		ListenerMetadata: "should-be-suppressed",
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO}"
 
 	if got := seccomp.FormatProfile(profile); got != want {
 		t.Errorf("FormatProfile() = %q, want %q", got, want)

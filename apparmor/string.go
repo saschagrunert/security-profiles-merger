@@ -21,6 +21,15 @@ import (
 	"strings"
 )
 
+// FormatProfile returns a human-readable representation of an AppArmor profile.
+func FormatProfile(profile *Profile) string {
+	if profile == nil {
+		return "Profile{<nil>}"
+	}
+
+	return profile.String()
+}
+
 // String returns a human-readable representation of the profile.
 func (p Profile) String() string {
 	var parts []string
@@ -34,7 +43,9 @@ func (p Profile) String() string {
 	}
 
 	if p.Network != nil {
-		parts = append(parts, p.Network.String())
+		if s := p.Network.String(); s != "" {
+			parts = append(parts, s)
+		}
 	}
 
 	if p.Capabilities != nil {
@@ -94,6 +105,10 @@ func (n NetworkRules) String() string {
 		if n.Protocols.AllowUDP != nil {
 			parts = append(parts, formatBool("udp", *n.Protocols.AllowUDP))
 		}
+	}
+
+	if len(parts) == 0 {
+		return ""
 	}
 
 	return "net:" + strings.Join(parts, ",")

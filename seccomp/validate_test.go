@@ -56,7 +56,7 @@ func TestValidateUnknownDefaultAction(t *testing.T) {
 	t.Parallel()
 
 	profile := &specs.LinuxSeccomp{
-		DefaultAction: "SCMP_ACT_INVALID",
+		DefaultAction: actInvalid,
 	}
 
 	err := seccomp.Validate(profile)
@@ -86,7 +86,7 @@ func TestValidateMultipleErrors(t *testing.T) {
 	t.Parallel()
 
 	profile := &specs.LinuxSeccomp{
-		DefaultAction: "SCMP_ACT_INVALID",
+		DefaultAction: actInvalid,
 		Syscalls: []specs.LinuxSyscall{
 			{Names: []string{syscallRead}, Action: "SCMP_ACT_BOGUS"},
 			{Names: []string{syscallWrite}, Action: "SCMP_ACT_FAKE"},
@@ -159,5 +159,73 @@ func TestValidateAllKnownActions(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error for action %q: %v", action, err)
 		}
+	}
+}
+
+func TestValidateStrictDuplicateSyscallName(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallRead}, Action: specs.ActLog},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	if err != nil {
+		t.Fatalf("Validate should permit duplicate names: %v", err)
+	}
+
+	err = seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate syscall name")
+	}
+
+	if !errors.Is(err, seccomp.ErrDuplicateSyscallName) {
+		t.Errorf("expected ErrDuplicateSyscallName, got: %v", err)
+	}
+}
+
+func TestValidateStrictNoDuplicates(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallWrite}, Action: specs.ActLog},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictForwardsValidateErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: actInvalid,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallRead}, Action: specs.ActLog},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error from ValidateStrict")
+	}
+
+	if !errors.Is(err, seccomp.ErrUnknownAction) {
+		t.Errorf("expected ErrUnknownAction, got: %v", err)
+	}
+
+	if errors.Is(err, seccomp.ErrDuplicateSyscallName) {
+		t.Error("should not reach duplicate check when Validate fails")
 	}
 }

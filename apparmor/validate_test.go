@@ -210,3 +210,111 @@ func TestValidateEmptyPathInExecutables(t *testing.T) {
 		t.Errorf("expected ErrEmptyPath, got: %v", err)
 	}
 }
+
+func TestValidateDuplicatePathInCategory(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig, pathEtcConfig},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate path within category")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicatePathInCategory) {
+		t.Errorf(
+			"expected ErrDuplicatePathInCategory, got: %v", err,
+		)
+	}
+}
+
+func TestValidateDuplicatePathInWriteOnlyCategory(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{pathTmp, pathTmp},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate path in WriteOnlyPaths")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicatePathInCategory) {
+		t.Errorf(
+			"expected ErrDuplicatePathInCategory, got: %v", err,
+		)
+	}
+}
+
+func TestValidateDuplicatePathInReadWriteCategory(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathVarLog, pathVarLog},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate path in ReadWritePaths")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicatePathInCategory) {
+		t.Errorf(
+			"expected ErrDuplicatePathInCategory, got: %v", err,
+		)
+	}
+}
+
+func TestValidateDuplicateCapability(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{
+				capNetAdmin, capSysTime, capNetAdmin,
+			},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate capability")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicateCapability) {
+		t.Errorf("expected ErrDuplicateCapability, got: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), capNetAdmin) {
+		t.Errorf(
+			"error should mention %s: %v", capNetAdmin, err,
+		)
+	}
+}

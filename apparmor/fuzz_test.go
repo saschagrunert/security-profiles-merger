@@ -17,7 +17,7 @@ limitations under the License.
 package apparmor_test
 
 import (
-	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -80,7 +80,7 @@ func sanitizeFuzzPath(fuzzPath, fallback string) string {
 		return fallback
 	}
 
-	return path.Clean(fuzzPath)
+	return filepath.Clean(fuzzPath)
 }
 
 func addAppArmorFuzzSeeds(f *testing.F) {

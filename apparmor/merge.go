@@ -19,7 +19,7 @@ package apparmor
 
 import (
 	"fmt"
-	"path"
+	"path/filepath"
 	"slices"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
@@ -549,7 +549,7 @@ func normalizeProfile(profile *Profile) *Profile {
 
 func normalizePaths(paths []string) []string {
 	for idx, p := range paths {
-		paths[idx] = path.Clean(p)
+		paths[idx] = filepath.Clean(p)
 	}
 
 	return paths

@@ -33,6 +33,10 @@ func FormatProfile(profile *specs.LinuxSeccomp) string {
 
 	parts = append(parts, "default:"+string(profile.DefaultAction))
 
+	if profile.DefaultErrnoRet != nil {
+		parts = append(parts, fmt.Sprintf("defaultErrno:%d", *profile.DefaultErrnoRet))
+	}
+
 	if len(profile.Architectures) > 0 {
 		archs := make([]string, len(profile.Architectures))
 		for idx, arch := range profile.Architectures {
@@ -40,6 +44,23 @@ func FormatProfile(profile *specs.LinuxSeccomp) string {
 		}
 
 		parts = append(parts, "arch:"+strings.Join(archs, ","))
+	}
+
+	if len(profile.Flags) > 0 {
+		flags := make([]string, len(profile.Flags))
+		for idx, flag := range profile.Flags {
+			flags[idx] = string(flag)
+		}
+
+		parts = append(parts, "flags:"+strings.Join(flags, ","))
+	}
+
+	if profile.ListenerPath != "" {
+		parts = append(parts, "listener:"+profile.ListenerPath)
+
+		if profile.ListenerMetadata != "" {
+			parts = append(parts, "listenerMeta:"+profile.ListenerMetadata)
+		}
 	}
 
 	for _, sc := range profile.Syscalls {
@@ -51,19 +72,24 @@ func FormatProfile(profile *specs.LinuxSeccomp) string {
 
 func formatSyscall(syscall specs.LinuxSyscall) string {
 	names := strings.Join(syscall.Names, ",")
+	action := string(syscall.Action)
+
+	if syscall.ErrnoRet != nil {
+		action = fmt.Sprintf("%s(errno:%d)", action, *syscall.ErrnoRet)
+	}
 
 	if len(syscall.Args) == 0 {
-		return names + "->" + string(syscall.Action)
+		return names + "->" + action
 	}
 
 	args := make([]string, len(syscall.Args))
 	for idx, arg := range syscall.Args {
-		if arg.Op == specs.OpMaskedEqual && arg.ValueTwo != 0 {
+		if arg.Op == specs.OpMaskedEqual {
 			args[idx] = fmt.Sprintf("[%d]%s:%d:%d", arg.Index, arg.Op, arg.Value, arg.ValueTwo)
 		} else {
 			args[idx] = fmt.Sprintf("[%d]%s:%d", arg.Index, arg.Op, arg.Value)
 		}
 	}
 
-	return fmt.Sprintf("%s(%s)->%s", names, strings.Join(args, ","), syscall.Action)
+	return fmt.Sprintf("%s(%s)->%s", names, strings.Join(args, ","), action)
 }

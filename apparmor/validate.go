@@ -26,6 +26,14 @@ var (
 	// filesystem rule categories within the same profile.
 	ErrDuplicatePath = errors.New("duplicate path across filesystem categories")
 
+	// ErrDuplicatePathInCategory is returned when a path appears more than
+	// once within the same filesystem rule category.
+	ErrDuplicatePathInCategory = errors.New("duplicate path within category")
+
+	// ErrDuplicateCapability is returned when the same capability appears
+	// more than once in AllowedCapabilities.
+	ErrDuplicateCapability = errors.New("duplicate capability")
+
 	// ErrEmptyPath is returned when a path rule contains an empty string.
 	ErrEmptyPath = errors.New("empty path")
 )
@@ -56,6 +64,20 @@ func Validate(profile *Profile) error {
 		if err != nil {
 			errs = append(errs, err)
 		}
+
+		err = validateDuplicatePathsInCategory(profile.Filesystem)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if profile.Capabilities != nil {
+		err := validateDuplicateCapabilities(
+			profile.Capabilities.AllowedCapabilities,
+		)
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)
@@ -76,7 +98,7 @@ func validateEmptyPaths(context string, paths []string) []error {
 }
 
 // validateEmptyPathsInProfile checks for empty paths before normalization,
-// since path.Clean("") returns "." which would bypass Validate's check.
+// since filepath.Clean("") returns "." which would bypass Validate's check.
 func validateEmptyPathsInProfile(profile *Profile) error {
 	var errs []error
 
@@ -134,4 +156,49 @@ func validateFilesystemPaths(rules *FilesystemRules) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func validateDuplicatePathsInCategory(rules *FilesystemRules) error {
+	roErrs := validateDuplicatesInSlice(
+		"ReadOnlyPaths", rules.ReadOnlyPaths, ErrDuplicatePathInCategory,
+	)
+	woErrs := validateDuplicatesInSlice(
+		"WriteOnlyPaths", rules.WriteOnlyPaths, ErrDuplicatePathInCategory,
+	)
+	rwErrs := validateDuplicatesInSlice(
+		"ReadWritePaths", rules.ReadWritePaths, ErrDuplicatePathInCategory,
+	)
+
+	errs := make([]error, 0, len(roErrs)+len(woErrs)+len(rwErrs))
+	errs = append(errs, roErrs...)
+	errs = append(errs, woErrs...)
+	errs = append(errs, rwErrs...)
+
+	return errors.Join(errs...)
+}
+
+func validateDuplicateCapabilities(caps []string) error {
+	return errors.Join(validateDuplicatesInSlice(
+		"AllowedCapabilities", caps, ErrDuplicateCapability,
+	)...)
+}
+
+func validateDuplicatesInSlice(
+	context string, items []string, sentinel error,
+) []error {
+	seen := make(map[string]struct{}, len(items))
+
+	var errs []error
+
+	for _, item := range items {
+		if _, ok := seen[item]; ok {
+			errs = append(errs, fmt.Errorf(
+				"%s: %q: %w", context, item, sentinel,
+			))
+		}
+
+		seen[item] = struct{}{}
+	}
+
+	return errs
 }
