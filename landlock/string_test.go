@@ -91,3 +91,32 @@ func TestProfileStringEmpty(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+func TestFormatProfileNil(t *testing.T) {
+	t.Parallel()
+
+	const want = "Profile{<nil>}"
+
+	if got := landlock.FormatProfile(nil); got != want {
+		t.Errorf("FormatProfile(nil) = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileNonNil(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	const want = "Profile{fs:read_file}"
+
+	if got := landlock.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}

@@ -18,7 +18,7 @@ package landlock_test
 
 import (
 	"cmp"
-	"path"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -44,6 +44,7 @@ func allFSRightsForFuzz() []landlock.FSAccessRight {
 		landlock.FSAccessRefer,
 		landlock.FSAccessTruncate,
 		landlock.FSAccessIOCTLDev,
+		landlock.FSAccessResolveUnix,
 	}
 }
 
@@ -51,13 +52,15 @@ func allNetRightsForFuzz() []landlock.NetAccessRight {
 	return []landlock.NetAccessRight{
 		landlock.NetAccessBindTCP,
 		landlock.NetAccessConnectTCP,
+		landlock.NetAccessBindUDP,
+		landlock.NetAccessConnectSendUDP,
 	}
 }
 
 func fuzzLandlockProfile(
-	handledFSMask uint16, handledNetMask uint8,
+	handledFSMask uint32, handledNetMask uint8,
 	path1, path2 string,
-	accessMask1, accessMask2 uint16,
+	accessMask1, accessMask2 uint32,
 	port1, port2 uint16,
 	netMask1, netMask2 uint8,
 ) *landlock.Profile {
@@ -72,11 +75,12 @@ func fuzzLandlockProfile(
 		path2 = "/default2"
 	}
 
-	path1 = path.Clean(path1)
-	path2 = path.Clean(path2)
+	path1 = filepath.Clean(path1)
+	path2 = filepath.Clean(path2)
 
 	pathRules := buildFuzzPathRules(
-		path1, path2, accessMask1&handledFSMask, accessMask2&handledFSMask,
+		path1, path2,
+		accessMask1&handledFSMask, accessMask2&handledFSMask,
 	)
 	netRules := buildFuzzNetRules(
 		port1, port2, netMask1&handledNetMask, netMask2&handledNetMask,
@@ -92,7 +96,7 @@ func fuzzLandlockProfile(
 
 func buildFuzzPathRules(
 	path1, path2 string,
-	accessMask1, accessMask2 uint16,
+	accessMask1, accessMask2 uint32,
 ) []landlock.PathRule {
 	var pathRules []landlock.PathRule
 
@@ -140,7 +144,7 @@ func buildFuzzNetRules(
 	return netRules
 }
 
-func pickFSRights(mask uint16) []landlock.FSAccessRight {
+func pickFSRights(mask uint32) []landlock.FSAccessRight {
 	all := allFSRightsForFuzz()
 
 	var rights []landlock.FSAccessRight
@@ -173,56 +177,56 @@ func addLandlockFuzzSeeds(f *testing.F) {
 
 	// Baseline: overlapping paths.
 	f.Add(
-		uint16(0x07), uint8(0x03),
+		uint32(0x07), uint8(0x03),
 		"/etc", "/home",
-		uint16(0x05), uint16(0x03),
+		uint32(0x05), uint32(0x03),
 		uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
-		uint16(0x07), uint8(0x03),
+		uint32(0x07), uint8(0x03),
 		"/etc", "/tmp",
-		uint16(0x01), uint16(0x06),
+		uint32(0x01), uint32(0x06),
 		uint16(80), uint16(8080),
 		uint8(0x03), uint8(0x01),
 	)
 
 	// Identical profiles.
 	f.Add(
-		uint16(0x03), uint8(0x01),
+		uint32(0x03), uint8(0x01),
 		"/etc", "/home",
-		uint16(0x01), uint16(0x02),
+		uint32(0x01), uint32(0x02),
 		uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
-		uint16(0x03), uint8(0x01),
+		uint32(0x03), uint8(0x01),
 		"/etc", "/home",
-		uint16(0x01), uint16(0x02),
+		uint32(0x01), uint32(0x02),
 		uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
 	)
 
 	// Disjoint paths.
 	f.Add(
-		uint16(0xFFFF), uint8(0x03),
+		uint32(0x1FFFF), uint8(0x0F),
 		"/a", "/b",
-		uint16(0x01), uint16(0x02),
+		uint32(0x01), uint32(0x02),
 		uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
-		uint16(0xFFFF), uint8(0x03),
+		uint32(0x1FFFF), uint8(0x0F),
 		"/c", "/d",
-		uint16(0x04), uint16(0x08),
+		uint32(0x04), uint32(0x08),
 		uint16(8080), uint16(9090),
 		uint8(0x01), uint8(0x02),
 	)
 
 	// All FS rights handled, empty access lists.
 	f.Add(
-		uint16(0xFFFF), uint8(0x03),
+		uint32(0x1FFFF), uint8(0x0F),
 		"/etc", "/home",
-		uint16(0x00), uint16(0x00),
+		uint32(0x00), uint32(0x00),
 		uint16(80), uint16(443),
 		uint8(0x00), uint8(0x00),
-		uint16(0xFFFF), uint8(0x03),
+		uint32(0x1FFFF), uint8(0x0F),
 		"/etc", "/tmp",
-		uint16(0x00), uint16(0x00),
+		uint32(0x00), uint32(0x00),
 		uint16(80), uint16(8080),
 		uint8(0x00), uint8(0x00),
 	)
@@ -236,14 +240,14 @@ type fuzzMergeConfig struct {
 func fuzzMerge(
 	t *testing.T,
 	cfg fuzzMergeConfig,
-	hfsL uint16, hnetL uint8,
+	hfsL uint32, hnetL uint8,
 	p1L, p2L string,
-	am1L, am2L uint16,
+	am1L, am2L uint32,
 	port1L, port2L uint16,
 	nm1L, nm2L uint8,
-	hfsR uint16, hnetR uint8,
+	hfsR uint32, hnetR uint8,
 	p1R, p2R string,
-	am1R, am2R uint16,
+	am1R, am2R uint32,
 	port1R, port2R uint16,
 	nm1R, nm2R uint8,
 ) {
@@ -353,14 +357,14 @@ func FuzzLandlockIntersect(f *testing.F) {
 
 	f.Fuzz(func(
 		t *testing.T,
-		hfsL uint16, hnetL uint8,
+		hfsL uint32, hnetL uint8,
 		p1L, p2L string,
-		am1L, am2L uint16,
+		am1L, am2L uint32,
 		port1L, port2L uint16,
 		nm1L, nm2L uint8,
-		hfsR uint16, hnetR uint8,
+		hfsR uint32, hnetR uint8,
 		p1R, p2R string,
-		am1R, am2R uint16,
+		am1R, am2R uint32,
 		port1R, port2R uint16,
 		nm1R, nm2R uint8,
 	) {
@@ -383,14 +387,14 @@ func FuzzLandlockUnion(f *testing.F) {
 
 	f.Fuzz(func(
 		t *testing.T,
-		hfsL uint16, hnetL uint8,
+		hfsL uint32, hnetL uint8,
 		p1L, p2L string,
-		am1L, am2L uint16,
+		am1L, am2L uint32,
 		port1L, port2L uint16,
 		nm1L, nm2L uint8,
-		hfsR uint16, hnetR uint8,
+		hfsR uint32, hnetR uint8,
 		p1R, p2R string,
-		am1R, am2R uint16,
+		am1R, am2R uint32,
 		port1R, port2R uint16,
 		nm1R, nm2R uint8,
 	) {

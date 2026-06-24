@@ -31,6 +31,8 @@ const (
 	syscallWrite = "write"
 	syscallOpen  = "open"
 	syscallClone = "clone"
+
+	actInvalid = "SCMP_ACT_INVALID"
 )
 
 func TestIntersectEmpty(t *testing.T) {

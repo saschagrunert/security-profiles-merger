@@ -104,7 +104,7 @@ func validateRights[T ~string](
 }
 
 // validateEmptyPathsBeforeNormalize catches empty paths before
-// path.Clean("") turns them into ".", which would bypass Validate.
+// filepath.Clean("") turns them into ".", which would bypass Validate.
 func validateEmptyPathsBeforeNormalize(profile *Profile) error {
 	var errs []error
 
@@ -120,7 +120,7 @@ func validateEmptyPathsBeforeNormalize(profile *Profile) error {
 // validatePathRules checks path rules for empty paths, unknown rights, and
 // duplicate rights. The empty-path check here covers direct Validate callers;
 // foldProfiles also runs validateEmptyPathsBeforeNormalize to catch empty
-// paths before path.Clean turns them into ".".
+// paths before filepath.Clean turns them into ".".
 func validatePathRules(rules []PathRule) []error {
 	var errs []error
 

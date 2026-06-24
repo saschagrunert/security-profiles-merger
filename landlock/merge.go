@@ -20,7 +20,7 @@ package landlock
 import (
 	"cmp"
 	"fmt"
-	"path"
+	"path/filepath"
 	"slices"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
@@ -404,7 +404,7 @@ func normalizeProfile(profile *Profile) *Profile {
 	clone := cloneProfile(profile)
 
 	for idx := range clone.PathRules {
-		clone.PathRules[idx].Path = path.Clean(clone.PathRules[idx].Path)
+		clone.PathRules[idx].Path = filepath.Clean(clone.PathRules[idx].Path)
 	}
 
 	return clone

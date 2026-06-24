@@ -47,7 +47,7 @@ func TestProfileString(t *testing.T) {
 			},
 		},
 		Capabilities: &apparmor.CapabilityRules{
-			AllowedCapabilities: []string{"NET_ADMIN", "SYS_TIME"},
+			AllowedCapabilities: []string{capNetAdmin, capSysTime},
 		},
 	}
 
@@ -140,5 +140,83 @@ func TestCapabilityRulesString(t *testing.T) {
 
 	if got := rules.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestNetworkRulesStringEmpty(t *testing.T) {
+	t.Parallel()
+
+	rules := apparmor.NetworkRules{
+		AllowRaw:  nil,
+		Protocols: nil,
+	}
+
+	if got := rules.String(); got != "" {
+		t.Errorf("String() = %q, want empty string", got)
+	}
+}
+
+func TestNetworkRulesStringEmptyProtocols(t *testing.T) {
+	t.Parallel()
+
+	rules := apparmor.NetworkRules{
+		AllowRaw: nil,
+		Protocols: &apparmor.AllowedProtocols{
+			AllowTCP: nil,
+			AllowUDP: nil,
+		},
+	}
+
+	if got := rules.String(); got != "" {
+		t.Errorf("String() = %q, want empty string", got)
+	}
+}
+
+func TestProfileStringWithEmptyNetwork(t *testing.T) {
+	t.Parallel()
+
+	profile := apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw:  nil,
+			Protocols: nil,
+		},
+		Capabilities: nil,
+	}
+
+	const want = "Profile{}"
+
+	if got := profile.String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileNil(t *testing.T) {
+	t.Parallel()
+
+	const want = "Profile{<nil>}"
+
+	if got := apparmor.FormatProfile(nil); got != want {
+		t.Errorf("FormatProfile(nil) = %q, want %q", got, want)
+	}
+}
+
+func TestFormatProfileNonNil(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	const want = "Profile{caps:NET_ADMIN}"
+
+	if got := apparmor.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
 	}
 }
