@@ -19,7 +19,6 @@ package landlock_test
 import (
 	"cmp"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"testing"
 
@@ -278,8 +277,13 @@ func fuzzMerge(
 		t.Fatalf("commuted merge: %v", err)
 	}
 
-	if !reflect.DeepEqual(result, commuted) {
+	if !profilesEqual(result, commuted) {
 		t.Error("Merge(L,R) != Merge(R,L)")
+	}
+
+	single, err := cfg.merge(left)
+	if err != nil {
+		t.Fatalf("single merge: %v", err)
 	}
 
 	idempotent, err := cfg.merge(left, left)
@@ -287,12 +291,65 @@ func fuzzMerge(
 		t.Fatalf("idempotent merge: %v", err)
 	}
 
-	if idempotent == nil {
-		t.Fatal("idempotent result must not be nil")
+	if !profilesEqual(idempotent, single) {
+		t.Error("Merge(X,X) should equal Merge(X)")
 	}
 }
 
+func fsRightSet(rights []landlock.FSAccessRight) map[landlock.FSAccessRight]struct{} {
+	set := make(map[landlock.FSAccessRight]struct{}, len(rights))
+	for _, r := range rights {
+		set[r] = struct{}{}
+	}
+
+	return set
+}
+
+func netRightSet(rights []landlock.NetAccessRight) map[landlock.NetAccessRight]struct{} {
+	set := make(map[landlock.NetAccessRight]struct{}, len(rights))
+	for _, r := range rights {
+		set[r] = struct{}{}
+	}
+
+	return set
+}
+
+func pathRuleMap(rules []landlock.PathRule) map[string][]landlock.FSAccessRight {
+	result := make(map[string][]landlock.FSAccessRight, len(rules))
+	for _, rule := range rules {
+		result[rule.Path] = rule.AccessFS
+	}
+
+	return result
+}
+
+func netRulePortMap(
+	rules []landlock.NetRule,
+) map[uint16][]landlock.NetAccessRight {
+	result := make(map[uint16][]landlock.NetAccessRight, len(rules))
+	for _, rule := range rules {
+		result[rule.Port] = rule.AccessNet
+	}
+
+	return result
+}
+
 func assertIntersectInvariants(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	assertPathsFromInputs(t, result, left, right)
+	assertAccessRightsSubset(t, result, left, right)
+	assertIntersectOneSidedPaths(t, result, left, right)
+	assertNetAccessRightsSubset(t, result, left, right)
+	assertIntersectOneSidedNet(t, result, left, right)
+	assertHandledFromInputs(t, result, left, right)
+	assertHandledCoversInputs(t, result, left, right)
+}
+
+func assertPathsFromInputs(
 	t *testing.T,
 	result, left, right *landlock.Profile,
 ) {
@@ -309,15 +366,241 @@ func assertIntersectInvariants(
 
 	for _, rule := range result.PathRules {
 		if _, ok := inputPaths[rule.Path]; !ok {
-			t.Errorf(
-				"result contains path %q not in any input",
-				rule.Path,
-			)
+			t.Errorf("result contains path %q not in any input", rule.Path)
+		}
+	}
+}
+
+func assertAccessRightsSubset(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftPaths := pathRuleMap(left.PathRules)
+	rightPaths := pathRuleMap(right.PathRules)
+
+	for _, rule := range result.PathRules {
+		leftAccess, inLeft := leftPaths[rule.Path]
+		rightAccess, inRight := rightPaths[rule.Path]
+
+		if !inLeft || !inRight {
+			continue
+		}
+
+		leftSet := fsRightSet(leftAccess)
+		rightSet := fsRightSet(rightAccess)
+
+		for _, r := range rule.AccessFS {
+			_, inL := leftSet[r]
+			_, inR := rightSet[r]
+
+			if !inL || !inR {
+				t.Errorf("intersect path %q has right %q not in both inputs", rule.Path, r)
+			}
+		}
+	}
+}
+
+func assertHandledFromInputs(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftHandledFS := fsRightSet(left.HandledAccessFS)
+	rightHandledFS := fsRightSet(right.HandledAccessFS)
+
+	for _, r := range result.HandledAccessFS {
+		if _, inL := leftHandledFS[r]; !inL {
+			if _, inR := rightHandledFS[r]; !inR {
+				t.Errorf("intersect handled FS right %q not in either input", r)
+			}
+		}
+	}
+
+	leftHandledNet := netRightSet(left.HandledAccessNet)
+	rightHandledNet := netRightSet(right.HandledAccessNet)
+
+	for _, r := range result.HandledAccessNet {
+		if _, inL := leftHandledNet[r]; !inL {
+			if _, inR := rightHandledNet[r]; !inR {
+				t.Errorf("intersect handled Net right %q not in either input", r)
+			}
+		}
+	}
+}
+
+func assertHandledCoversInputs(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	assertHandledCoversInputsFS(t, result, left, right)
+	assertHandledCoversInputsNet(t, result, left, right)
+}
+
+func assertHandledCoversInputsFS(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultFS := fsRightSet(result.HandledAccessFS)
+
+	for _, r := range left.HandledAccessFS {
+		if _, ok := resultFS[r]; !ok {
+			t.Errorf("intersect handled FS missing left input right %q", r)
+		}
+	}
+
+	for _, r := range right.HandledAccessFS {
+		if _, ok := resultFS[r]; !ok {
+			t.Errorf("intersect handled FS missing right input right %q", r)
+		}
+	}
+}
+
+func assertHandledCoversInputsNet(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultNet := netRightSet(result.HandledAccessNet)
+
+	for _, r := range left.HandledAccessNet {
+		if _, ok := resultNet[r]; !ok {
+			t.Errorf("intersect handled Net missing left input right %q", r)
+		}
+	}
+
+	for _, r := range right.HandledAccessNet {
+		if _, ok := resultNet[r]; !ok {
+			t.Errorf("intersect handled Net missing right input right %q", r)
+		}
+	}
+}
+
+func assertIntersectOneSidedPaths(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftPaths := pathRuleMap(left.PathRules)
+	rightPaths := pathRuleMap(right.PathRules)
+	rightHandled := fsRightSet(right.HandledAccessFS)
+	leftHandled := fsRightSet(left.HandledAccessFS)
+
+	for _, rule := range result.PathRules {
+		_, inLeft := leftPaths[rule.Path]
+		_, inRight := rightPaths[rule.Path]
+
+		if inLeft && inRight {
+			continue
+		}
+
+		handled := rightHandled
+		if inRight {
+			handled = leftHandled
+		}
+
+		for _, r := range rule.AccessFS {
+			if _, isHandled := handled[r]; isHandled {
+				t.Errorf(
+					"intersect one-sided path %q has handled right %q",
+					rule.Path, r,
+				)
+			}
+		}
+	}
+}
+
+func assertNetAccessRightsSubset(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftPorts := netRulePortMap(left.NetRules)
+	rightPorts := netRulePortMap(right.NetRules)
+
+	for _, rule := range result.NetRules {
+		leftAccess, inLeft := leftPorts[rule.Port]
+		rightAccess, inRight := rightPorts[rule.Port]
+
+		if !inLeft || !inRight {
+			continue
+		}
+
+		leftSet := netRightSet(leftAccess)
+		rightSet := netRightSet(rightAccess)
+
+		for _, right := range rule.AccessNet {
+			_, inL := leftSet[right]
+			_, inR := rightSet[right]
+
+			if !inL || !inR {
+				t.Errorf(
+					"intersect port %d has right %q not in both inputs",
+					rule.Port, right,
+				)
+			}
+		}
+	}
+}
+
+func assertIntersectOneSidedNet(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftPorts := netRulePortMap(left.NetRules)
+	rightPorts := netRulePortMap(right.NetRules)
+	rightHandled := netRightSet(right.HandledAccessNet)
+	leftHandled := netRightSet(left.HandledAccessNet)
+
+	for _, rule := range result.NetRules {
+		_, inLeft := leftPorts[rule.Port]
+		_, inRight := rightPorts[rule.Port]
+
+		if inLeft && inRight {
+			continue
+		}
+
+		handled := rightHandled
+		if inRight {
+			handled = leftHandled
+		}
+
+		for _, r := range rule.AccessNet {
+			if _, isHandled := handled[r]; isHandled {
+				t.Errorf(
+					"intersect one-sided port %d has handled right %q",
+					rule.Port, r,
+				)
+			}
 		}
 	}
 }
 
 func assertUnionInvariants(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	assertUnionPathCoverage(t, result, left, right)
+	assertUnionPathRightsSuperset(t, result, left, right)
+	assertUnionNetRightsSuperset(t, result, left, right)
+	assertUnionHandledSubset(t, result, left, right)
+	assertUnionHandledCoversCommon(t, result, left, right)
+}
+
+func assertUnionPathCoverage(
 	t *testing.T,
 	result, left, right *landlock.Profile,
 ) {
@@ -345,6 +628,216 @@ func assertUnionInvariants(
 	) {
 		t.Error("result path rules are not sorted")
 	}
+}
+
+func assertUnionHandledSubset(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	leftHandledFS := fsRightSet(left.HandledAccessFS)
+	rightHandledFS := fsRightSet(right.HandledAccessFS)
+
+	for _, r := range result.HandledAccessFS {
+		_, inL := leftHandledFS[r]
+		_, inR := rightHandledFS[r]
+
+		if !inL || !inR {
+			t.Errorf("union handled FS right %q not in both inputs", r)
+		}
+	}
+
+	leftHandledNet := netRightSet(left.HandledAccessNet)
+	rightHandledNet := netRightSet(right.HandledAccessNet)
+
+	for _, r := range result.HandledAccessNet {
+		_, inL := leftHandledNet[r]
+		_, inR := rightHandledNet[r]
+
+		if !inL || !inR {
+			t.Errorf("union handled Net right %q not in both inputs", r)
+		}
+	}
+}
+
+func assertUnionHandledCoversCommon(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	assertUnionHandledCoversCommonFS(t, result, left, right)
+	assertUnionHandledCoversCommonNet(t, result, left, right)
+}
+
+func assertUnionHandledCoversCommonFS(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultFS := fsRightSet(result.HandledAccessFS)
+	rightFS := fsRightSet(right.HandledAccessFS)
+
+	for _, fsRight := range left.HandledAccessFS {
+		if _, inR := rightFS[fsRight]; !inR {
+			continue
+		}
+
+		if _, ok := resultFS[fsRight]; !ok {
+			t.Errorf("union handled FS missing common right %q", fsRight)
+		}
+	}
+}
+
+func assertUnionHandledCoversCommonNet(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultNet := netRightSet(result.HandledAccessNet)
+	rightNet := netRightSet(right.HandledAccessNet)
+
+	for _, netRight := range left.HandledAccessNet {
+		if _, inR := rightNet[netRight]; !inR {
+			continue
+		}
+
+		if _, ok := resultNet[netRight]; !ok {
+			t.Errorf("union handled Net missing common right %q", netRight)
+		}
+	}
+}
+
+func assertUnionPathRightsSuperset(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultPaths := pathRuleMap(result.PathRules)
+	leftPaths := pathRuleMap(left.PathRules)
+	rightPaths := pathRuleMap(right.PathRules)
+
+	assertPathRightsPresent(t, leftPaths, rightPaths, resultPaths)
+	assertPathRightsPresent(t, rightPaths, leftPaths, resultPaths)
+}
+
+func assertPathRightsPresent(
+	t *testing.T,
+	source, other map[string][]landlock.FSAccessRight,
+	result map[string][]landlock.FSAccessRight,
+) {
+	t.Helper()
+
+	for path, access := range source {
+		if _, inOther := other[path]; !inOther {
+			continue
+		}
+
+		resultAccess, inResult := result[path]
+		if !inResult {
+			t.Errorf("union missing shared path %q", path)
+
+			continue
+		}
+
+		resultSet := fsRightSet(resultAccess)
+
+		for _, r := range access {
+			if _, ok := resultSet[r]; !ok {
+				t.Errorf("union path %q missing right %q", path, r)
+			}
+		}
+	}
+}
+
+func assertUnionNetRightsSuperset(
+	t *testing.T,
+	result, left, right *landlock.Profile,
+) {
+	t.Helper()
+
+	resultPorts := netRulePortMap(result.NetRules)
+	leftPorts := netRulePortMap(left.NetRules)
+	rightPorts := netRulePortMap(right.NetRules)
+
+	assertNetRightsPresent(t, leftPorts, rightPorts, resultPorts)
+	assertNetRightsPresent(t, rightPorts, leftPorts, resultPorts)
+}
+
+func assertNetRightsPresent(
+	t *testing.T,
+	source, other map[uint16][]landlock.NetAccessRight,
+	result map[uint16][]landlock.NetAccessRight,
+) {
+	t.Helper()
+
+	for port, access := range source {
+		if _, inOther := other[port]; !inOther {
+			continue
+		}
+
+		resultAccess, inResult := result[port]
+		if !inResult {
+			t.Errorf("union missing shared port %d", port)
+
+			continue
+		}
+
+		resultSet := netRightSet(resultAccess)
+
+		for _, r := range access {
+			if _, ok := resultSet[r]; !ok {
+				t.Errorf("union port %d missing right %q", port, r)
+			}
+		}
+	}
+}
+
+func profilesEqual(a, b *landlock.Profile) bool {
+	return slices.Equal(a.HandledAccessFS, b.HandledAccessFS) &&
+		slices.Equal(a.HandledAccessNet, b.HandledAccessNet) &&
+		pathRulesEqual(a.PathRules, b.PathRules) &&
+		netRulesEqual(a.NetRules, b.NetRules)
+}
+
+func pathRulesEqual(left, right []landlock.PathRule) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for idx := range left {
+		if left[idx].Path != right[idx].Path {
+			return false
+		}
+
+		if !slices.Equal(left[idx].AccessFS, right[idx].AccessFS) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func netRulesEqual(left, right []landlock.NetRule) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for idx := range left {
+		if left[idx].Port != right[idx].Port {
+			return false
+		}
+
+		if !slices.Equal(left[idx].AccessNet, right[idx].AccessNet) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func FuzzLandlockIntersect(f *testing.F) {

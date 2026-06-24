@@ -39,6 +39,10 @@ const (
 	pathBinCurl   = "/usr/bin/curl"
 	pathLibC      = "/usr/lib/libc.so"
 	pathLibM      = "/usr/lib/libm.so"
+	pathBinShell  = "/bin/bash"
+	pathBinSh     = "/bin/sh"
+	pathLibCStd   = "/lib/libc.so"
+	pathLibMStd   = "/lib/libm.so"
 )
 
 func boolPtr(val bool) *bool { return &val }

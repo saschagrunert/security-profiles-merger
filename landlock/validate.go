@@ -106,6 +106,10 @@ func validateRights[T ~string](
 // validateEmptyPathsBeforeNormalize catches empty paths before
 // filepath.Clean("") turns them into ".", which would bypass Validate.
 func validateEmptyPathsBeforeNormalize(profile *Profile) error {
+	if profile == nil {
+		return ErrNilProfile
+	}
+
 	var errs []error
 
 	for idx, rule := range profile.PathRules {

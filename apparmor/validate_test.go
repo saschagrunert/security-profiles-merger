@@ -193,7 +193,7 @@ func TestValidateEmptyPathInExecutables(t *testing.T) {
 
 	profile := &apparmor.Profile{
 		Executable: &apparmor.ExecutableRules{
-			AllowedExecutables: []string{"/bin/bash", ""},
+			AllowedExecutables: []string{pathBinShell, ""},
 			AllowedLibraries:   nil,
 		},
 		Filesystem:   nil,
@@ -316,5 +316,185 @@ func TestValidateDuplicateCapability(t *testing.T) {
 		t.Errorf(
 			"error should mention %s: %v", capNetAdmin, err,
 		)
+	}
+}
+
+func TestValidateStrictNil(t *testing.T) {
+	t.Parallel()
+
+	err := apparmor.ValidateStrict(nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+
+	if !errors.Is(err, apparmor.ErrNilProfile) {
+		t.Errorf("expected ErrNilProfile, got: %v", err)
+	}
+}
+
+func TestValidateStrictBothDuplicates(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinShell, pathBinShell},
+			AllowedLibraries:   []string{pathLibCStd, pathLibCStd},
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for both duplicate executables and libraries")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
+		t.Errorf("expected ErrDuplicateExecutablePath, got: %v", err)
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, pathBinShell) {
+		t.Errorf("error should mention %s: %v", pathBinShell, err)
+	}
+
+	if !strings.Contains(msg, pathLibCStd) {
+		t.Errorf("error should mention %s: %v", pathLibCStd, err)
+	}
+}
+
+func TestValidateStrictValid(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinShell, pathBinSh},
+			AllowedLibraries:   []string{pathLibCStd},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathTmp},
+			ReadWritePaths: []string{pathVarLog},
+		},
+		Network: nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	err := apparmor.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictForwardsValidateErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinShell, pathBinShell},
+			AllowedLibraries:   nil,
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathEtcConfig},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error from ValidateStrict")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicatePath) {
+		t.Errorf("expected ErrDuplicatePath, got: %v", err)
+	}
+
+	if errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
+		t.Error("should not reach duplicate executable check when Validate fails")
+	}
+}
+
+func TestValidateStrictDuplicateExecutable(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinShell, pathBinSh, pathBinShell},
+			AllowedLibraries:   nil,
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err != nil {
+		t.Fatalf("Validate should permit duplicate executables: %v", err)
+	}
+
+	err = apparmor.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate executable path")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
+		t.Errorf("expected ErrDuplicateExecutablePath, got: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), pathBinShell) {
+		t.Errorf("error should mention %s: %v", pathBinShell, err)
+	}
+}
+
+func TestValidateStrictDuplicateLibrary(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: nil,
+			AllowedLibraries:   []string{pathLibCStd, pathLibCStd},
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.Validate(profile)
+	if err != nil {
+		t.Fatalf("Validate should permit duplicate libraries: %v", err)
+	}
+
+	err = apparmor.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate library path")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
+		t.Errorf("expected ErrDuplicateExecutablePath, got: %v", err)
+	}
+}
+
+func TestValidateStrictNoDuplicates(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinShell, pathBinSh},
+			AllowedLibraries:   []string{pathLibCStd, pathLibMStd},
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

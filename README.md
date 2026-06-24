@@ -122,6 +122,10 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.Validate(profile *Profile) error` -
   Checks that no path appears in multiple filesystem categories (e.g. both
   read-only and write-only).
+- `apparmor.ValidateStrict(profile *Profile) error` -
+  Performs all checks from Validate and additionally verifies that no path
+  appears more than once in AllowedExecutables or AllowedLibraries. Use
+  Validate for merge inputs and ValidateStrict for user-authored profiles.
 
 **Errors:**
 
@@ -130,6 +134,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.ErrDuplicatePath` - returned when a path appears in multiple
   filesystem categories.
 - `apparmor.ErrEmptyPath` - returned when a path rule contains an empty string.
+- `apparmor.ErrDuplicateExecutablePath` - returned by ValidateStrict when the
+  same path appears more than once in AllowedExecutables or AllowedLibraries.
 
 **Types:**
 

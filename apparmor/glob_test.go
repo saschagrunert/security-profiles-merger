@@ -453,7 +453,7 @@ func TestUnionGlobThreeWay(t *testing.T) {
 
 	third := &apparmor.Profile{
 		Executable: &apparmor.ExecutableRules{
-			AllowedExecutables: []string{"/bin/sh", "/opt/tool"},
+			AllowedExecutables: []string{pathBinSh, "/opt/tool"},
 			AllowedLibraries:   nil,
 		},
 		Filesystem:   nil,
