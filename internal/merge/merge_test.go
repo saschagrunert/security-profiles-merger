@@ -17,6 +17,7 @@ limitations under the License.
 package merge_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -169,8 +170,8 @@ func cloneTestProfile(p *testProfile) *testProfile {
 	return &testProfile{value: p.value}
 }
 
-func addTestProfiles(a, b *testProfile) *testProfile {
-	return &testProfile{value: a.value + b.value}
+func addTestProfiles(a, b *testProfile) (*testProfile, error) {
+	return &testProfile{value: a.value + b.value}, nil
 }
 
 func TestFoldEmpty(t *testing.T) {
@@ -281,4 +282,44 @@ func TestErrors(t *testing.T) {
 			t.Errorf("ErrNilProfile = %q, want %q", merge.ErrNilProfile.Error(), want)
 		}
 	})
+}
+
+var errMergeFailed = errors.New("merge failed")
+
+func TestFoldMergeErrorFirstPair(t *testing.T) {
+	t.Parallel()
+
+	failMerge := func(_, _ *testProfile) (*testProfile, error) {
+		return nil, errMergeFailed
+	}
+
+	_, err := merge.Fold(
+		[]*testProfile{{value: 1}, {value: 2}},
+		cloneTestProfile, failMerge,
+	)
+	if !errors.Is(err, errMergeFailed) {
+		t.Fatalf("expected errMergeFailed, got %v", err)
+	}
+}
+
+func TestFoldMergeErrorSubsequentPair(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	failOnSecond := func(left, right *testProfile) (*testProfile, error) {
+		calls++
+		if calls >= 2 {
+			return nil, errMergeFailed
+		}
+
+		return &testProfile{value: left.value + right.value}, nil
+	}
+
+	_, err := merge.Fold(
+		[]*testProfile{{value: 1}, {value: 2}, {value: 3}},
+		cloneTestProfile, failOnSecond,
+	)
+	if !errors.Is(err, errMergeFailed) {
+		t.Fatalf("expected errMergeFailed, got %v", err)
+	}
 }
