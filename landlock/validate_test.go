@@ -420,7 +420,8 @@ func TestValidateAllKnownNetRights(t *testing.T) {
 		landlock.NetAccessBindTCP,
 		landlock.NetAccessConnectTCP,
 		landlock.NetAccessBindUDP,
-		landlock.NetAccessConnectSendUDP,
+		landlock.NetAccessConnectUDP,
+		landlock.NetAccessSendtoUDP,
 	}
 
 	profile := &landlock.Profile{

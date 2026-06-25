@@ -85,6 +85,50 @@ func ExampleValidate() {
 	// HandledAccessFS: unknown access right "bogus_right"
 }
 
+func ExampleValidateStrict() {
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	fmt.Println(err)
+
+	// Output:
+	// PathRules[0]: right "write_file": rule grants unhandled access right
+}
+
+func ExampleFormatProfile() {
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	fmt.Println(landlock.FormatProfile(profile))
+
+	// Output:
+	// Profile{fs:read_file /etc(read_file)}
+}
+
 func ExampleUnion() {
 	recording1 := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{

@@ -154,6 +154,22 @@ func ExampleFormatProfile() {
 	// Profile{default:SCMP_ACT_ERRNO read->SCMP_ACT_ALLOW write->SCMP_ACT_ALLOW}
 }
 
+func ExampleValidateStrict() {
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallRead}, Action: specs.ActErrno},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	fmt.Println(err)
+
+	// Output:
+	// syscall "read" in entries 0 and 1: duplicate syscall name
+}
+
 func ExampleUnion() {
 	recording1 := &specs.LinuxSeccomp{
 		DefaultAction: specs.ActErrno,

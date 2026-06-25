@@ -197,7 +197,8 @@ func isKnownFSRight(right FSAccessRight) bool {
 func isKnownNetRight(right NetAccessRight) bool {
 	switch right {
 	case NetAccessBindTCP, NetAccessConnectTCP,
-		NetAccessBindUDP, NetAccessConnectSendUDP:
+		NetAccessBindUDP, NetAccessConnectUDP,
+		NetAccessSendtoUDP:
 		return true
 	default:
 		return false

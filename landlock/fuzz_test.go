@@ -52,7 +52,8 @@ func allNetRightsForFuzz() []landlock.NetAccessRight {
 		landlock.NetAccessBindTCP,
 		landlock.NetAccessConnectTCP,
 		landlock.NetAccessBindUDP,
-		landlock.NetAccessConnectSendUDP,
+		landlock.NetAccessConnectUDP,
+		landlock.NetAccessSendtoUDP,
 	}
 }
 
