@@ -293,6 +293,23 @@ Download a pre-built binary from the
 Each release includes cosign-signed checksums, SBOMs, and build provenance
 attestations.
 
+To verify a downloaded binary:
+
+```sh
+# Verify checksums signature
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp 'github.com/saschagrunert/security-profiles-merger' \
+  checksums.txt
+
+# Verify binary against signed checksums
+sha256sum -c checksums.txt
+
+# Or verify build provenance directly
+gh attestation verify spm_*_linux_amd64 -R saschagrunert/security-profiles-merger
+```
+
 Or install from source:
 
 ```
