@@ -103,8 +103,11 @@ const (
 	// NetAccessBindUDP allows binding a UDP socket.
 	NetAccessBindUDP NetAccessRight = "bind_udp"
 
-	// NetAccessConnectSendUDP allows connecting or sending to a UDP socket.
-	NetAccessConnectSendUDP NetAccessRight = "connect_send_udp"
+	// NetAccessConnectUDP allows connecting a UDP socket.
+	NetAccessConnectUDP NetAccessRight = "connect_udp"
+
+	// NetAccessSendtoUDP allows sending to a UDP socket via sendto/sendmsg.
+	NetAccessSendtoUDP NetAccessRight = "sendto_udp"
 )
 
 // PathRule defines the access rights allowed for a specific path hierarchy.

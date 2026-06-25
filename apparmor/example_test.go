@@ -71,6 +71,40 @@ func ExampleValidate() {
 	// path "/etc/config" in both ReadOnlyPaths and WriteOnlyPaths: duplicate path across filesystem categories
 }
 
+func ExampleValidateStrict() {
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathEtcConfig, pathEtcConfig},
+			AllowedLibraries:   nil,
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	err := apparmor.ValidateStrict(profile)
+	fmt.Println(err)
+
+	// Output:
+	// AllowedExecutables: "/etc/config": duplicate executable path
+}
+
+func ExampleFormatProfile() {
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	fmt.Println(apparmor.FormatProfile(profile))
+
+	// Output:
+	// Profile{caps:NET_ADMIN}
+}
+
 func ExampleUnion() {
 	recording1 := &apparmor.Profile{
 		Executable: nil,
