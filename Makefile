@@ -20,7 +20,7 @@ NOCOLOR := \033[0m
 PACKAGES := $(shell $(GO) list ./... | grep -v /internal/)
 
 .PHONY: all
-all: test lint ## Run tests and linters
+all: build ## Build the project
 
 .PHONY: help
 help: ## Display this help
@@ -39,10 +39,18 @@ help: ## Display this help
 			} \
 		' $(MAKEFILE_LIST)
 
+##@ Build
+
+.PHONY: build
+build: ## Build the spm binary (static)
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 $(GO) build -o $(BUILD_DIR)/spm ./cmd/spm/
+
 ##@ Development
 
 .PHONY: test
-test: | $(BUILD_DIR) ## Run tests with race detection and coverage report
+test: ## Run tests with race detection and coverage report
+	@mkdir -p $(BUILD_DIR)
 	$(GO) test -v -race -count=1 -coverprofile=$(BUILD_DIR)/coverage.out -covermode=atomic -coverpkg=./... ./...
 	$(GO) tool cover -html=$(BUILD_DIR)/coverage.out -o $(BUILD_DIR)/coverage.html
 
@@ -67,14 +75,16 @@ bench: ## Run benchmarks
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run
 
-$(GOLANGCI_LINT): | $(BUILD_DIR)
+$(GOLANGCI_LINT):
+	@mkdir -p $(BUILD_DIR)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(BUILD_DIR) v$(GOLANGCI_LINT_VERSION)
 
 .PHONY: verify-dependencies
 verify-dependencies: $(ZEITGEIST) ## Verify external dependencies
 	$(ZEITGEIST) validate --local-only --base-path . --config dependencies.yaml
 
-$(ZEITGEIST): | $(BUILD_DIR)
+$(ZEITGEIST):
+	@mkdir -p $(BUILD_DIR)
 	curl -sSfL -o $(ZEITGEIST) \
 		https://github.com/kubernetes-sigs/zeitgeist/releases/download/$(ZEITGEIST_VERSION)/zeitgeist-$(ARCH)-$(OS)
 	chmod +x $(ZEITGEIST)
@@ -98,5 +108,3 @@ tidy: ## Run go mod tidy
 clean: ## Remove build artifacts
 	rm -rf $(BUILD_DIR)
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
