@@ -34,6 +34,8 @@ const (
 	globUsrLibSO   = "/usr/lib/**/*.so"
 	globDataStar   = "/data/*"
 	globUsrLibStar = "/usr/lib/*"
+	globVarLogDS   = "/var/log/**"
+	globVarDS      = "/var/**"
 
 	pathBinLs     = "/bin/ls"
 	pathBinCat    = "/bin/cat"
@@ -320,7 +322,7 @@ func TestUnionFilesystemGlobSubsume(t *testing.T) {
 		apparmor.FilesystemRules{
 			ReadOnlyPaths:  nil,
 			WriteOnlyPaths: nil,
-			ReadWritePaths: []string{"/var/log/**"},
+			ReadWritePaths: []string{globVarLogDS},
 		},
 		apparmor.FilesystemRules{
 			ReadOnlyPaths:  []string{"/var/log/syslog"},
@@ -330,7 +332,7 @@ func TestUnionFilesystemGlobSubsume(t *testing.T) {
 		apparmor.FilesystemRules{
 			ReadOnlyPaths:  nil,
 			WriteOnlyPaths: nil,
-			ReadWritePaths: []string{"/var/log/**"},
+			ReadWritePaths: []string{globVarLogDS},
 		},
 	)
 }
@@ -802,7 +804,7 @@ func TestIntersectFilesystemDifferentGlobs(t *testing.T) {
 			ReadWritePaths: nil,
 		},
 		apparmor.FilesystemRules{
-			ReadOnlyPaths:  []string{"/var/**"},
+			ReadOnlyPaths:  []string{globVarDS},
 			WriteOnlyPaths: nil,
 			ReadWritePaths: nil,
 		},
@@ -1004,6 +1006,76 @@ func assertFilesystemGlobUnion(
 	t.Helper()
 
 	assertFilesystemGlobMerge(t, apparmor.Union, left, right, want)
+}
+
+func TestIntersectGlobPrefixNarrowing(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		left  []string
+		right []string
+		want  []string
+	}{
+		{
+			name:  "deeper prefix narrows to more specific glob",
+			left:  []string{globVarDS},
+			right: []string{globVarLogDS},
+			want:  []string{globVarLogDS},
+		},
+		{
+			name:  "reverse direction same result",
+			left:  []string{globVarLogDS},
+			right: []string{globVarDS},
+			want:  []string{globVarLogDS},
+		},
+		{
+			name:  "disjoint prefixes no match",
+			left:  []string{globVarDS},
+			right: []string{"/tmp/**"},
+			want:  nil,
+		},
+		{
+			name:  "same prefix different suffix conservative",
+			left:  []string{"/usr/lib/**"},
+			right: []string{"/usr/lib/*"},
+			want:  nil,
+		},
+		{
+			name:  "three level narrowing",
+			left:  []string{"/opt/**"},
+			right: []string{"/opt/app/data/**"},
+			want:  []string{"/opt/app/data/**"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertGlobIntersect(t, test.left, test.right, test.want)
+		})
+	}
+}
+
+func TestIntersectFilesystemGlobPrefixNarrowing(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobIntersect(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globVarDS},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globVarLogDS},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globVarLogDS},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+	)
 }
 
 func TestGlobPatternTooLong(t *testing.T) {

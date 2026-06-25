@@ -62,9 +62,7 @@ type strategy interface {
 	mergeNetRules(left, right *Profile) []NetRule
 }
 
-func foldProfiles(
-	profiles []*Profile, mergeOp strategy,
-) (*Profile, error) {
+func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 	for _, profile := range profiles {
 		err := validateEmptyPathsBeforeNormalize(profile)
 		if err != nil {
@@ -84,8 +82,8 @@ func foldProfiles(
 		}
 	}
 
-	result, err := merge.Fold(normalized, cloneProfile, func(a, b *Profile) *Profile {
-		return mergeTwo(a, b, mergeOp)
+	result, err := merge.Fold(normalized, cloneProfile, func(a, b *Profile) (*Profile, error) {
+		return mergeTwo(a, b, mergeOp), nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fold: %w", err)
