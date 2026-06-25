@@ -102,6 +102,9 @@ func foldProfiles(
 		return cmp.Compare(a.Names[0], b.Names[0])
 	})
 
+	slices.Sort(result.Architectures)
+	slices.Sort(result.Flags)
+
 	return result, nil
 }
 

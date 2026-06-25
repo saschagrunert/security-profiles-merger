@@ -658,6 +658,54 @@ func TestUnionFlags(t *testing.T) {
 	}
 }
 
+func TestUnionArchitecturesSorted(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{specs.ArchX86_64},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{specs.ArchARM},
+	}
+
+	result, err := seccomp.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []specs.Arch{specs.ArchARM, specs.ArchX86_64}
+	if !slices.Equal(result.Architectures, want) {
+		t.Errorf("architectures = %v, want %v (sorted)", result.Architectures, want)
+	}
+}
+
+func TestUnionFlagsSorted(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags:         []specs.LinuxSeccompFlag{specs.LinuxSeccompFlagSpecAllow},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags:         []specs.LinuxSeccompFlag{specs.LinuxSeccompFlagLog},
+	}
+
+	result, err := seccomp.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []specs.LinuxSeccompFlag{specs.LinuxSeccompFlagLog, specs.LinuxSeccompFlagSpecAllow}
+	if !slices.Equal(result.Flags, want) {
+		t.Errorf("flags = %v, want %v (sorted)", result.Flags, want)
+	}
+}
+
 func TestIntersectErrnoRet(t *testing.T) {
 	t.Parallel()
 

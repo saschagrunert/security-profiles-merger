@@ -58,9 +58,9 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   Merge two bare syscall slices via intersection without a profile-level
   DefaultAction. Syscalls present in only one list are dropped. Multi-name
   entries are normalized to one-name-per-entry and the result is sorted by name.
-- `seccomp.MoreRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
+- `seccomp.MoreRestrictive(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction` -
   Returns the more restrictive of two seccomp actions.
-- `seccomp.LessRestrictive(a, b LinuxSeccompAction) LinuxSeccompAction` -
+- `seccomp.LessRestrictive(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction` -
   Returns the less restrictive of two seccomp actions.
 - `seccomp.Validate(profile *specs.LinuxSeccomp) error` -
   Checks that a profile contains only known actions and that every syscall entry
@@ -146,6 +146,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.ErrDuplicateCapability` - returned when the same capability appears
   more than once in AllowedCapabilities.
 - `apparmor.ErrEmptyPath` - returned when a path rule contains an empty string.
+- `apparmor.ErrEmptyCapability` - returned when a capability entry is an empty
+  string.
 - `apparmor.ErrDuplicateExecutablePath` - returned by ValidateStrict when the
   same path appears more than once in AllowedExecutables or AllowedLibraries.
 
