@@ -26,18 +26,16 @@ checksum:
 
 signs:
   - cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
+      - --bundle=${signature}
       - --yes
-      - --output-signature=${signature}
-      - --output-certificate=${certificate}
       - ${artifact}
     artifacts: checksum
 
 sboms:
-  - artifacts: archive
+  - artifacts: binary
 
 changelog:
   sort: asc
