@@ -37,6 +37,10 @@ var (
 	// ErrEmptyPath is returned when a path rule contains an empty string.
 	ErrEmptyPath = errors.New("empty path")
 
+	// ErrEmptyCapability is returned when a capability entry is an empty
+	// string.
+	ErrEmptyCapability = errors.New("empty capability")
+
 	// ErrDuplicateExecutablePath is returned when the same path appears
 	// more than once in AllowedExecutables or AllowedLibraries.
 	ErrDuplicateExecutablePath = errors.New("duplicate executable path")
@@ -76,7 +80,14 @@ func Validate(profile *Profile) error {
 	}
 
 	if profile.Capabilities != nil {
-		err := validateDuplicateCapabilities(
+		err := validateEmptyCapabilities(
+			profile.Capabilities.AllowedCapabilities,
+		)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		err = validateDuplicateCapabilities(
 			profile.Capabilities.AllowedCapabilities,
 		)
 		if err != nil {
@@ -210,6 +221,20 @@ func validateDuplicatePathsInCategory(rules *FilesystemRules) error {
 	errs = append(errs, roErrs...)
 	errs = append(errs, woErrs...)
 	errs = append(errs, rwErrs...)
+
+	return errors.Join(errs...)
+}
+
+func validateEmptyCapabilities(caps []string) error {
+	var errs []error
+
+	for idx, cap := range caps {
+		if cap == "" {
+			errs = append(errs, fmt.Errorf(
+				"AllowedCapabilities[%d]: %w", idx, ErrEmptyCapability,
+			))
+		}
+	}
 
 	return errors.Join(errs...)
 }

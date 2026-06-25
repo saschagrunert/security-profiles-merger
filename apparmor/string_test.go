@@ -143,6 +143,20 @@ func TestCapabilityRulesString(t *testing.T) {
 	}
 }
 
+func TestCapabilityRulesStringEmpty(t *testing.T) {
+	t.Parallel()
+
+	rules := apparmor.CapabilityRules{
+		AllowedCapabilities: nil,
+	}
+
+	const want = "caps:none"
+
+	if got := rules.String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
 func TestNetworkRulesStringEmpty(t *testing.T) {
 	t.Parallel()
 

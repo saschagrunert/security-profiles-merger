@@ -71,6 +71,23 @@ func ExampleValidate() {
 	// path "/etc/config" in both ReadOnlyPaths and WriteOnlyPaths: duplicate path across filesystem categories
 }
 
+func ExampleValidate_emptyCapability() {
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, ""},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	fmt.Println(err)
+
+	// Output:
+	// AllowedCapabilities[1]: empty capability
+}
+
 func ExampleValidateStrict() {
 	profile := &apparmor.Profile{
 		Executable: &apparmor.ExecutableRules{

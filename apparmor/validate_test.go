@@ -289,6 +289,28 @@ func TestValidateDuplicatePathInReadWriteCategory(t *testing.T) {
 	}
 }
 
+func TestValidateEmptyCapability(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, ""},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty capability")
+	}
+
+	if !errors.Is(err, apparmor.ErrEmptyCapability) {
+		t.Errorf("expected ErrEmptyCapability, got: %v", err)
+	}
+}
+
 func TestValidateDuplicateCapability(t *testing.T) {
 	t.Parallel()
 
