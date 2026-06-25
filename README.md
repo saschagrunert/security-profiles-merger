@@ -281,6 +281,78 @@ llEffective, err := landlock.Intersect(baseRuleset, ociRuleset)
 llCombined, err := landlock.Union(recorded1, recorded2)
 ```
 
+## CLI
+
+The `spm` command-line tool provides profile merging and validation without
+writing Go code.
+
+### Install
+
+Download a pre-built binary from the
+[releases page](https://github.com/saschagrunert/security-profiles-merger/releases).
+Each release includes cosign-signed checksums, SBOMs, and build provenance
+attestations.
+
+Or install from source:
+
+```
+go install github.com/saschagrunert/security-profiles-merger/cmd/spm@latest
+```
+
+Or build statically from source:
+
+```
+make build   # produces build/spm
+```
+
+### Merge profiles
+
+```sh
+spm merge --type seccomp --strategy intersect baseline.json oci.json
+spm merge --type apparmor --strategy union recording1.json recording2.json
+```
+
+Profiles can also be read from stdin as a JSON array:
+
+```sh
+cat profiles.json | spm merge --type landlock --strategy intersect
+```
+
+Use `-` to read from stdin alongside file arguments:
+
+```sh
+spm merge --type seccomp --strategy intersect baseline.json - < recording.json
+```
+
+Use `--format=human` for human-readable output via `FormatProfile`:
+
+```sh
+spm merge --type seccomp --strategy intersect --format human a.json b.json
+```
+
+### Validate profiles
+
+```sh
+spm validate --type seccomp profile.json
+spm validate --type apparmor --strict user-profile.json
+```
+
+Profiles can also be read from stdin:
+
+```sh
+cat profile.json | spm validate --type seccomp
+```
+
+Use `--format=human` for human-readable output:
+
+```sh
+spm validate --type seccomp --format human profile.json
+```
+
+Validation outputs the profile on success (exit 0) or prints errors to
+stderr on failure (exit 1). Use `--strict` for stricter checks intended
+for user-authored profiles.
+
 ## Community, discussion, contribution, and support
 
 Learn how to engage with the Kubernetes community on the
