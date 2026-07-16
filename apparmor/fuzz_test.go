@@ -19,6 +19,7 @@ package apparmor_test
 import (
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -76,7 +77,11 @@ func sanitizeFuzzPath(fuzzPath, fallback string) string {
 		return fallback
 	}
 
-	if strings.ContainsAny(fuzzPath, "*?{") {
+	if apparmor.IsGlobPattern(fuzzPath) {
+		if strings.HasPrefix(fuzzPath, "/") {
+			return fuzzPath
+		}
+
 		return fallback
 	}
 
@@ -115,6 +120,12 @@ func addAppArmorFuzzSeeds(f *testing.F) {
 		"CAP_A", "CAP_A", "/x", "/y", true, false, true,
 		"CAP_B", "CAP_B", "/x", "/z", false, true, false,
 	)
+
+	// Glob paths for glob-aware merge coverage.
+	f.Add(
+		"NET_ADMIN", "CHOWN", "/etc/**", "/data/*", true, true, false,
+		"NET_ADMIN", "CHOWN", "/opt/tool", "/proc/*/status", false, false, true,
+	)
 }
 
 type fuzzAppArmorCheckFunc func(*testing.T, *apparmor.Profile, *apparmor.Profile, *apparmor.Profile)
@@ -150,7 +161,20 @@ func fuzzAppArmorMerge(
 
 	cfg.checkCap(t, result, left, right)
 	cfg.checkNet(t, result, left, right)
-	cfg.checkExec(t, result, left, right)
+
+	// Glob subsumption rearranges paths across categories, breaking structural equality.
+	if !profileHasGlobs(left) && !profileHasGlobs(right) {
+		cfg.checkExec(t, result, left, right)
+		checkStructuralProperties(t, cfg, left, right, result)
+	}
+}
+
+func checkStructuralProperties(
+	t *testing.T,
+	cfg fuzzAppArmorMergeConfig,
+	left, right, result *apparmor.Profile,
+) {
+	t.Helper()
 
 	commuted, err := cfg.merge(right, left)
 	if err != nil {
@@ -388,6 +412,27 @@ func stringSet(items []string) map[string]struct{} {
 	}
 
 	return set
+}
+
+func hasGlobPath(paths []string) bool {
+	return slices.ContainsFunc(paths, apparmor.IsGlobPattern)
+}
+
+func profileHasGlobs(profile *apparmor.Profile) bool {
+	if profile.Executable != nil &&
+		(hasGlobPath(profile.Executable.AllowedExecutables) ||
+			hasGlobPath(profile.Executable.AllowedLibraries)) {
+		return true
+	}
+
+	if profile.Filesystem != nil &&
+		(hasGlobPath(profile.Filesystem.ReadOnlyPaths) ||
+			hasGlobPath(profile.Filesystem.WriteOnlyPaths) ||
+			hasGlobPath(profile.Filesystem.ReadWritePaths)) {
+		return true
+	}
+
+	return false
 }
 
 func FuzzAppArmorIntersect(f *testing.F) {

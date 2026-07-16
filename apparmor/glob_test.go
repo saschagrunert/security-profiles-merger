@@ -37,16 +37,17 @@ const (
 	globVarLogDS   = "/var/log/**"
 	globVarDS      = "/var/**"
 
-	pathBinLs     = "/bin/ls"
-	pathBinCat    = "/bin/cat"
-	pathDataFile  = "/data/file"
-	pathEtcPasswd = "/etc/passwd"
-	pathEtcShadow = "/etc/shadow"
-	pathEtcGroup  = "/etc/group"
-	pathTmpFoo    = "/tmp/foo"
-	pathTmpFooo   = "/tmp/fooo"
-	pathUsrLibSO  = "/usr/lib/x86_64/libc.so"
-	pathLibFoo    = "/lib/foo"
+	pathBinLs       = "/bin/ls"
+	pathBinCat      = "/bin/cat"
+	pathDataFile    = "/data/file"
+	pathEtcPasswd   = "/etc/passwd"
+	pathEtcShadow   = "/etc/shadow"
+	pathEtcGroup    = "/etc/group"
+	pathTmpFoo      = "/tmp/foo"
+	pathTmpFooo     = "/tmp/fooo"
+	pathUsrLibSO    = "/usr/lib/x86_64/libc.so"
+	pathLibFoo      = "/lib/foo"
+	pathProc1Status = "/proc/1/status"
 )
 
 func TestUnionGlobInvalidUTF8(t *testing.T) {
@@ -179,7 +180,7 @@ func TestUnionGlobCombined(t *testing.T) {
 		{
 			name:  "star in path component",
 			left:  []string{globProcStatus},
-			right: []string{"/proc/1/status", "/proc/self/status"},
+			right: []string{pathProc1Status, "/proc/self/status"},
 			want:  []string{globProcStatus},
 		},
 		{
@@ -271,7 +272,7 @@ func TestUnionFilesystemGlobPromotion(t *testing.T) {
 		want  apparmor.FilesystemRules
 	}{
 		{
-			name: "read-only promoted to read-write",
+			name: "read-only glob covers write-only literal",
 			left: apparmor.FilesystemRules{
 				ReadOnlyPaths:  []string{globProcStatus},
 				WriteOnlyPaths: nil,
@@ -279,17 +280,17 @@ func TestUnionFilesystemGlobPromotion(t *testing.T) {
 			},
 			right: apparmor.FilesystemRules{
 				ReadOnlyPaths:  nil,
-				WriteOnlyPaths: []string{"/proc/1/status"},
+				WriteOnlyPaths: []string{pathProc1Status},
 				ReadWritePaths: nil,
 			},
 			want: apparmor.FilesystemRules{
-				ReadOnlyPaths:  nil,
+				ReadOnlyPaths:  []string{globProcStatus},
 				WriteOnlyPaths: nil,
-				ReadWritePaths: []string{globProcStatus},
+				ReadWritePaths: []string{pathProc1Status},
 			},
 		},
 		{
-			name: "write-only promoted to read-write",
+			name: "write-only glob covers read-only literal",
 			left: apparmor.FilesystemRules{
 				ReadOnlyPaths:  nil,
 				WriteOnlyPaths: []string{globDataStar},
@@ -302,8 +303,8 @@ func TestUnionFilesystemGlobPromotion(t *testing.T) {
 			},
 			want: apparmor.FilesystemRules{
 				ReadOnlyPaths:  nil,
-				WriteOnlyPaths: nil,
-				ReadWritePaths: []string{globDataStar},
+				WriteOnlyPaths: []string{globDataStar},
+				ReadWritePaths: []string{pathDataFile},
 			},
 		},
 	} {
@@ -594,8 +595,100 @@ func TestUnionFilesystemBroaderRightGlobPromotion(t *testing.T) {
 		},
 		apparmor.FilesystemRules{
 			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{globDataStar},
+			ReadWritePaths: []string{pathDataFile},
+		},
+	)
+}
+
+func TestUnionFilesystemRWGlobPromotesCoveredLiterals(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobUnion(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathDataFile},
+			WriteOnlyPaths: []string{pathBinLs},
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
 			WriteOnlyPaths: nil,
 			ReadWritePaths: []string{globDataStar},
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{pathBinLs},
+			ReadWritePaths: []string{globDataStar},
+		},
+	)
+}
+
+func TestUnionFilesystemReadGlobPromotesWriteLiterals(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobUnion(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{pathDataFile},
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globDataStar},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globDataStar},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathDataFile},
+		},
+	)
+}
+
+func TestUnionFilesystemLiteralRWMatchedByGlobInReadSet(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobUnion(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globDataStar},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathDataFile},
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{globDataStar},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathDataFile},
+		},
+	)
+}
+
+func TestUnionFilesystemLiteralRWMatchedByGlobInWriteSet(t *testing.T) {
+	t.Parallel()
+
+	assertFilesystemGlobUnion(
+		t,
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{globDataStar},
+			ReadWritePaths: nil,
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathDataFile},
+		},
+		apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{globDataStar},
+			ReadWritePaths: []string{pathDataFile},
 		},
 	)
 }

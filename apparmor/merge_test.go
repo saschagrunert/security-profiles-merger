@@ -385,9 +385,15 @@ func TestUnionFilesystemGlobSubsumesMultipleLiterals(t *testing.T) {
 			result.Filesystem.ReadOnlyPaths)
 	}
 
-	if !slices.Equal(result.Filesystem.ReadWritePaths, []string{"/data/*"}) {
-		t.Errorf("ReadWritePaths = %v, want [/data/*]",
-			result.Filesystem.ReadWritePaths)
+	wantRW := []string{"/data/a", "/data/b", "/data/c"}
+	if !slices.Equal(result.Filesystem.ReadWritePaths, wantRW) {
+		t.Errorf("ReadWritePaths = %v, want %v",
+			result.Filesystem.ReadWritePaths, wantRW)
+	}
+
+	if !slices.Equal(result.Filesystem.WriteOnlyPaths, []string{"/data/*"}) {
+		t.Errorf("WriteOnlyPaths = %v, want [/data/*]",
+			result.Filesystem.WriteOnlyPaths)
 	}
 }
 
@@ -1525,5 +1531,56 @@ func TestIntersectEmptyPathRejected(t *testing.T) {
 
 	if !errors.Is(err, apparmor.ErrEmptyPath) {
 		t.Errorf("expected ErrEmptyPath, got: %v", err)
+	}
+}
+
+func TestIntersectNormalizedDuplicatePaths(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/etc/./config", "/etc/config"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(result.Filesystem.ReadOnlyPaths, []string{"/etc/config"}) {
+		t.Errorf("ReadOnlyPaths = %v, want [/etc/config]", result.Filesystem.ReadOnlyPaths)
+	}
+}
+
+func TestNormalizeGlobPathPrefix(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/etc/./data/*"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(result.Filesystem.ReadOnlyPaths, []string{"/etc/data/*"}) {
+		t.Errorf(
+			"ReadOnlyPaths = %v, want [/etc/data/*]",
+			result.Filesystem.ReadOnlyPaths,
+		)
 	}
 }

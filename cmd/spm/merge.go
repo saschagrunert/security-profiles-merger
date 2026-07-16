@@ -188,16 +188,25 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 	return result, nil
 }
 
-var errEmptyInput = errors.New("no input provided")
+const maxStdinSize = 10 << 20
+
+var (
+	errEmptyInput    = errors.New("no input provided")
+	errStdinTooLarge = fmt.Errorf("stdin input exceeds %d bytes", maxStdinSize)
+)
 
 func readFromStdin(reader io.Reader) ([][]byte, error) {
 	if reader == nil {
 		return nil, errEmptyInput
 	}
 
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, maxStdinSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading stdin: %w", err)
+	}
+
+	if len(data) > maxStdinSize {
+		return nil, errStdinTooLarge
 	}
 
 	if len(bytes.TrimSpace(data)) == 0 {
