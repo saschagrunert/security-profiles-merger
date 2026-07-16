@@ -232,12 +232,16 @@ func validateDuplicatePaths(rules []PathRule) error {
 // inputs). Use Validate for merge inputs and ValidateStrict for
 // user-authored profiles.
 func ValidateStrict(profile *Profile) error {
+	var errs []error
+
 	err := Validate(profile)
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
-	var errs []error
+	if profile == nil {
+		return errors.Join(errs...)
+	}
 
 	handledFS := toSet(profile.HandledAccessFS)
 	handledNet := toSet(profile.HandledAccessNet)

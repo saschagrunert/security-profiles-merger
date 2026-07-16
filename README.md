@@ -78,6 +78,8 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
 - `seccomp.ErrNilProfile` - returned when a nil profile is provided.
 - `seccomp.ErrUnknownAction` - returned when a profile contains an unrecognized action.
 - `seccomp.ErrEmptySyscallNames` - returned when a syscall entry has no names.
+- `seccomp.ErrEmptySyscallName` - returned when a syscall entry contains an
+  empty string in its name list.
 - `seccomp.ErrDuplicateSyscallName` - returned by ValidateStrict when the same
   syscall name appears in multiple entries.
 

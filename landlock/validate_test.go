@@ -377,6 +377,33 @@ func TestValidateStrictUnhandledNetRight(t *testing.T) {
 	}
 }
 
+func TestValidateStrictCollectsAllErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"bogus"},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error from ValidateStrict")
+	}
+
+	if !errors.Is(err, landlock.ErrUnknownRight) {
+		t.Errorf("expected ErrUnknownRight, got: %v", err)
+	}
+
+	if !errors.Is(err, landlock.ErrUnhandledRight) {
+		t.Error("expected ErrUnhandledRight alongside Validate errors")
+	}
+}
+
 func TestValidateAllKnownFSRights(t *testing.T) {
 	t.Parallel()
 

@@ -25,8 +25,6 @@ import (
 	"io"
 	"os"
 
-	specs "github.com/opencontainers/runtime-spec/specs-go"
-
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
 	"github.com/saschagrunert/security-profiles-merger/landlock"
 	"github.com/saschagrunert/security-profiles-merger/seccomp"
@@ -96,11 +94,23 @@ func dispatchMerge(
 ) int {
 	switch profileType {
 	case typeSeccomp:
-		return mergeSeccomp(data, strategy, format, stdout, stderr)
+		return mergeProfiles(
+			data, strategy, format,
+			seccomp.Intersect, seccomp.Union, seccomp.FormatProfile,
+			stdout, stderr,
+		)
 	case typeAppArmor:
-		return mergeAppArmor(data, strategy, format, stdout, stderr)
+		return mergeProfiles(
+			data, strategy, format,
+			apparmor.Intersect, apparmor.Union, apparmor.FormatProfile,
+			stdout, stderr,
+		)
 	case typeLandlock:
-		return mergeLandlock(data, strategy, format, stdout, stderr)
+		return mergeProfiles(
+			data, strategy, format,
+			landlock.Intersect, landlock.Union, landlock.FormatProfile,
+			stdout, stderr,
+		)
 	default:
 		_, _ = fmt.Fprintf(
 			stderr, "error: unknown type %q (use seccomp, apparmor, or landlock)\n", profileType,
@@ -110,100 +120,41 @@ func dispatchMerge(
 	}
 }
 
-func mergeSeccomp(
-	data [][]byte, strategy, format string, stdout, stderr io.Writer,
+func mergeProfiles[T any](
+	data [][]byte,
+	strategy, format string,
+	intersect, union func(...*T) (*T, error),
+	formatFn func(*T) string,
+	stdout, stderr io.Writer,
 ) int {
-	profiles, err := unmarshalAll[specs.LinuxSeccomp](data)
+	profiles, err := unmarshalAll[T](data)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 
 		return 1
 	}
 
-	var result *specs.LinuxSeccomp
+	var mergeFn func(...*T) (*T, error)
 
 	switch strategy {
 	case strategyIntersect:
-		result, err = seccomp.Intersect(profiles...)
+		mergeFn = intersect
 	case strategyUnion:
-		result, err = seccomp.Union(profiles...)
+		mergeFn = union
 	default:
 		_, _ = fmt.Fprintf(stderr, "error: unknown strategy %q\n", strategy)
 
 		return 1
 	}
 
+	result, err := mergeFn(profiles...)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 
 		return 1
 	}
 
-	return writeOutput(result, seccomp.FormatProfile(result), format, stdout, stderr)
-}
-
-func mergeAppArmor(
-	data [][]byte, strategy, format string, stdout, stderr io.Writer,
-) int {
-	profiles, err := unmarshalAll[apparmor.Profile](data)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	var result *apparmor.Profile
-
-	switch strategy {
-	case strategyIntersect:
-		result, err = apparmor.Intersect(profiles...)
-	case strategyUnion:
-		result, err = apparmor.Union(profiles...)
-	default:
-		_, _ = fmt.Fprintf(stderr, "error: unknown strategy %q\n", strategy)
-
-		return 1
-	}
-
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	return writeOutput(result, apparmor.FormatProfile(result), format, stdout, stderr)
-}
-
-func mergeLandlock(
-	data [][]byte, strategy, format string, stdout, stderr io.Writer,
-) int {
-	profiles, err := unmarshalAll[landlock.Profile](data)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	var result *landlock.Profile
-
-	switch strategy {
-	case strategyIntersect:
-		result, err = landlock.Intersect(profiles...)
-	case strategyUnion:
-		result, err = landlock.Union(profiles...)
-	default:
-		_, _ = fmt.Fprintf(stderr, "error: unknown strategy %q\n", strategy)
-
-		return 1
-	}
-
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	return writeOutput(result, landlock.FormatProfile(result), format, stdout, stderr)
+	return writeOutput(result, formatFn(result), format, stdout, stderr)
 }
 
 func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {

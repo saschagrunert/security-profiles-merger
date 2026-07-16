@@ -137,6 +137,26 @@ func TestValidateEmptySyscallNames(t *testing.T) {
 	}
 }
 
+func TestValidateEmptySyscallName(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, ""}, Action: specs.ActAllow},
+		},
+	}
+
+	err := seccomp.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for empty syscall name in list")
+	}
+
+	if !errors.Is(err, seccomp.ErrEmptySyscallName) {
+		t.Errorf("expected ErrEmptySyscallName, got: %v", err)
+	}
+}
+
 func TestValidateAllKnownActions(t *testing.T) {
 	t.Parallel()
 
@@ -159,6 +179,19 @@ func TestValidateAllKnownActions(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error for action %q: %v", action, err)
 		}
+	}
+}
+
+func TestValidateStrictNil(t *testing.T) {
+	t.Parallel()
+
+	err := seccomp.ValidateStrict(nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+
+	if !errors.Is(err, seccomp.ErrNilProfile) {
+		t.Errorf("expected ErrNilProfile, got: %v", err)
 	}
 }
 
@@ -205,7 +238,7 @@ func TestValidateStrictNoDuplicates(t *testing.T) {
 	}
 }
 
-func TestValidateStrictForwardsValidateErrors(t *testing.T) {
+func TestValidateStrictCollectsAllErrors(t *testing.T) {
 	t.Parallel()
 
 	profile := &specs.LinuxSeccomp{
@@ -225,7 +258,7 @@ func TestValidateStrictForwardsValidateErrors(t *testing.T) {
 		t.Errorf("expected ErrUnknownAction, got: %v", err)
 	}
 
-	if errors.Is(err, seccomp.ErrDuplicateSyscallName) {
-		t.Error("should not reach duplicate check when Validate fails")
+	if !errors.Is(err, seccomp.ErrDuplicateSyscallName) {
+		t.Error("expected ErrDuplicateSyscallName alongside Validate errors")
 	}
 }

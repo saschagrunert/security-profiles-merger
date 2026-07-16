@@ -22,8 +22,6 @@ import (
 	"fmt"
 	"io"
 
-	specs "github.com/opencontainers/runtime-spec/specs-go"
-
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
 	"github.com/saschagrunert/security-profiles-merger/landlock"
 	"github.com/saschagrunert/security-profiles-merger/seccomp"
@@ -77,41 +75,64 @@ func runValidate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	switch *profileType {
+	return dispatchValidate(data, *profileType, *strict, *format, stdout, stderr)
+}
+
+func dispatchValidate(
+	data [][]byte, profileType string, strict bool, format string,
+	stdout, stderr io.Writer,
+) int {
+	switch profileType {
 	case typeSeccomp:
-		return validateSeccomp(data, *strict, *format, stdout, stderr)
+		return validateProfiles(
+			data, strict, format,
+			seccomp.Validate, seccomp.ValidateStrict, seccomp.FormatProfile,
+			stdout, stderr,
+		)
 	case typeAppArmor:
-		return validateAppArmor(data, *strict, *format, stdout, stderr)
+		return validateProfiles(
+			data, strict, format,
+			apparmor.Validate, apparmor.ValidateStrict, apparmor.FormatProfile,
+			stdout, stderr,
+		)
 	case typeLandlock:
-		return validateLandlock(data, *strict, *format, stdout, stderr)
+		return validateProfiles(
+			data, strict, format,
+			landlock.Validate, landlock.ValidateStrict, landlock.FormatProfile,
+			stdout, stderr,
+		)
 	default:
 		_, _ = fmt.Fprintf(
 			stderr,
 			"error: unknown type %q (use seccomp, apparmor, or landlock)\n",
-			*profileType,
+			profileType,
 		)
 
 		return exitUsage
 	}
 }
 
-func validateSeccomp(
-	data [][]byte, strict bool, format string, stdout, stderr io.Writer,
+func validateProfiles[T any](
+	data [][]byte,
+	strict bool, format string,
+	validate, validateStrict func(*T) error,
+	formatFn func(*T) string,
+	stdout, stderr io.Writer,
 ) int {
-	profiles, err := unmarshalAll[specs.LinuxSeccomp](data)
+	profiles, err := unmarshalAll[T](data)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 
 		return 1
 	}
 
-	validate := seccomp.Validate
+	check := validate
 	if strict {
-		validate = seccomp.ValidateStrict
+		check = validateStrict
 	}
 
 	for idx, profile := range profiles {
-		err := validate(profile)
+		err := check(profile)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "profile %d: %v\n", idx, err)
 
@@ -119,61 +140,7 @@ func validateSeccomp(
 		}
 	}
 
-	return writeValidated(profiles, seccompFormatAll(profiles), format, stdout, stderr)
-}
-
-func validateAppArmor(
-	data [][]byte, strict bool, format string, stdout, stderr io.Writer,
-) int {
-	profiles, err := unmarshalAll[apparmor.Profile](data)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	validate := apparmor.Validate
-	if strict {
-		validate = apparmor.ValidateStrict
-	}
-
-	for idx, profile := range profiles {
-		err := validate(profile)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "profile %d: %v\n", idx, err)
-
-			return 1
-		}
-	}
-
-	return writeValidated(profiles, apparmorFormatAll(profiles), format, stdout, stderr)
-}
-
-func validateLandlock(
-	data [][]byte, strict bool, format string, stdout, stderr io.Writer,
-) int {
-	profiles, err := unmarshalAll[landlock.Profile](data)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-
-		return 1
-	}
-
-	validate := landlock.Validate
-	if strict {
-		validate = landlock.ValidateStrict
-	}
-
-	for idx, profile := range profiles {
-		err := validate(profile)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "profile %d: %v\n", idx, err)
-
-			return 1
-		}
-	}
-
-	return writeValidated(profiles, landlockFormatAll(profiles), format, stdout, stderr)
+	return writeValidated(profiles, formatAll(profiles, formatFn), format, stdout, stderr)
 }
 
 func writeValidated[T any](
@@ -203,28 +170,10 @@ func writeValidated[T any](
 	return 0
 }
 
-func seccompFormatAll(profiles []*specs.LinuxSeccomp) []string {
+func formatAll[T any](profiles []*T, formatFn func(*T) string) []string {
 	result := make([]string, len(profiles))
 	for idx, p := range profiles {
-		result[idx] = seccomp.FormatProfile(p)
-	}
-
-	return result
-}
-
-func apparmorFormatAll(profiles []*apparmor.Profile) []string {
-	result := make([]string, len(profiles))
-	for idx, p := range profiles {
-		result[idx] = apparmor.FormatProfile(p)
-	}
-
-	return result
-}
-
-func landlockFormatAll(profiles []*landlock.Profile) []string {
-	result := make([]string, len(profiles))
-	for idx, p := range profiles {
-		result[idx] = landlock.FormatProfile(p)
+		result[idx] = formatFn(p)
 	}
 
 	return result
