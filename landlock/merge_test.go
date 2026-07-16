@@ -1223,3 +1223,32 @@ func TestUnionEmptyAccessDropsRule(t *testing.T) {
 		t.Errorf("expected no path rules for empty access union, got %d", len(result.PathRules))
 	}
 }
+
+func TestIntersectNormalizedDuplicatePaths(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		PathRules: []landlock.PathRule{
+			{Path: "/etc/./config", AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
+			{Path: "/etc/config", AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
+		},
+		NetRules: nil,
+	}
+
+	result, err := landlock.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Fatalf("expected 1 path rule after dedup, got %d", len(result.PathRules))
+	}
+
+	if result.PathRules[0].Path != "/etc/config" {
+		t.Errorf("expected /etc/config, got %s", result.PathRules[0].Path)
+	}
+}

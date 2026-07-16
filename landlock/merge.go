@@ -73,6 +73,7 @@ func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 	normalized := make([]*Profile, len(profiles))
 	for idx, profile := range profiles {
 		normalized[idx] = normalizeProfile(profile)
+		deduplicatePathRules(normalized[idx])
 	}
 
 	for _, profile := range normalized {
@@ -392,6 +393,30 @@ func clonePathRules(rules []PathRule) []PathRule {
 	}
 
 	return cloned
+}
+
+func deduplicatePathRules(profile *Profile) {
+	if len(profile.PathRules) == 0 {
+		return
+	}
+
+	seen := make(map[string]int, len(profile.PathRules))
+
+	var result []PathRule
+
+	for _, rule := range profile.PathRules {
+		if idx, ok := seen[rule.Path]; ok {
+			result[idx].AccessFS = merge.UnionSlice(result[idx].AccessFS, rule.AccessFS)
+		} else {
+			seen[rule.Path] = len(result)
+			result = append(result, PathRule{
+				Path:     rule.Path,
+				AccessFS: slices.Clone(rule.AccessFS),
+			})
+		}
+	}
+
+	profile.PathRules = result
 }
 
 func normalizeProfile(profile *Profile) *Profile {

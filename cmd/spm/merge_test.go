@@ -555,3 +555,21 @@ func TestMergeStdinDash(t *testing.T) {
 		t.Errorf("expected 1 syscall, got %d", len(result.Syscalls))
 	}
 }
+
+func TestMergeStdinTooLarge(t *testing.T) {
+	t.Parallel()
+
+	large := bytes.NewReader(make([]byte, maxStdinSize+1))
+
+	code, _, stderr := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
+	}, large)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "exceeds") {
+		t.Errorf("stderr should mention size exceeded, got: %s", stderr)
+	}
+}
