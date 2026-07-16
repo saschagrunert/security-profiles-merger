@@ -411,7 +411,7 @@ func TestValidateStrictValid(t *testing.T) {
 	}
 }
 
-func TestValidateStrictForwardsValidateErrors(t *testing.T) {
+func TestValidateStrictCollectsAllErrors(t *testing.T) {
 	t.Parallel()
 
 	profile := &apparmor.Profile{
@@ -437,8 +437,8 @@ func TestValidateStrictForwardsValidateErrors(t *testing.T) {
 		t.Errorf("expected ErrDuplicatePath, got: %v", err)
 	}
 
-	if errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
-		t.Error("should not reach duplicate executable check when Validate fails")
+	if !errors.Is(err, apparmor.ErrDuplicateExecutablePath) {
+		t.Error("expected ErrDuplicateExecutablePath alongside Validate errors")
 	}
 }
 

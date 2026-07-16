@@ -25,6 +25,7 @@ import (
 
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
 	"github.com/saschagrunert/security-profiles-merger/landlock"
+	"github.com/saschagrunert/security-profiles-merger/seccomp"
 )
 
 func TestMergeHelp(t *testing.T) {
@@ -66,7 +67,11 @@ func TestMergeSeccompInvalidStrategy(t *testing.T) {
 
 	data := [][]byte{[]byte(seccompJSON(t, testSyscallRead))}
 
-	code := mergeSeccomp(data, testBogus, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		data, testBogus, formatJSON,
+		seccomp.Intersect, seccomp.Union, seccomp.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -76,7 +81,11 @@ func TestMergeSeccompInvalidStrategy(t *testing.T) {
 func TestMergeSeccompNoProfiles(t *testing.T) {
 	t.Parallel()
 
-	code := mergeSeccomp(nil, strategyIntersect, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		nil, strategyIntersect, formatJSON,
+		seccomp.Intersect, seccomp.Union, seccomp.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -88,7 +97,11 @@ func TestMergeAppArmorInvalidStrategy(t *testing.T) {
 
 	data := [][]byte{[]byte(apparmorJSON(t, "NET_ADMIN"))}
 
-	code := mergeAppArmor(data, testBogus, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		data, testBogus, formatJSON,
+		apparmor.Intersect, apparmor.Union, apparmor.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -98,7 +111,11 @@ func TestMergeAppArmorInvalidStrategy(t *testing.T) {
 func TestMergeAppArmorNoProfiles(t *testing.T) {
 	t.Parallel()
 
-	code := mergeAppArmor(nil, strategyIntersect, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		nil, strategyIntersect, formatJSON,
+		apparmor.Intersect, apparmor.Union, apparmor.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -110,7 +127,11 @@ func TestMergeLandlockInvalidStrategy(t *testing.T) {
 
 	data := [][]byte{[]byte(landlockJSON(t, "read_file"))}
 
-	code := mergeLandlock(data, testBogus, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		data, testBogus, formatJSON,
+		landlock.Intersect, landlock.Union, landlock.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
@@ -120,7 +141,11 @@ func TestMergeLandlockInvalidStrategy(t *testing.T) {
 func TestMergeLandlockNoProfiles(t *testing.T) {
 	t.Parallel()
 
-	code := mergeLandlock(nil, strategyUnion, formatJSON, &bytes.Buffer{}, &bytes.Buffer{})
+	code := mergeProfiles(
+		nil, strategyUnion, formatJSON,
+		landlock.Intersect, landlock.Union, landlock.FormatProfile,
+		&bytes.Buffer{}, &bytes.Buffer{},
+	)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
