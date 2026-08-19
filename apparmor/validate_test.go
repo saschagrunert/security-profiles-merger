@@ -520,3 +520,49 @@ func TestValidateStrictNoDuplicates(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestValidateUnknownCapability(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, "BOGUS_CAP"},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for unknown capability")
+	}
+
+	if !errors.Is(err, apparmor.ErrUnknownCapability) {
+		t.Errorf("expected ErrUnknownCapability, got: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "BOGUS_CAP") {
+		t.Errorf("error should mention BOGUS_CAP: %v", err)
+	}
+}
+
+func TestValidateAllKnownCapabilities(t *testing.T) {
+	t.Parallel()
+
+	allCaps := allKnownTestCaps()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: allCaps,
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

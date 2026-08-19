@@ -93,6 +93,9 @@ const (
 	// FSAccessResolveUnix allows resolving/connecting to pathname-based
 	// UNIX domain sockets.
 	FSAccessResolveUnix FSAccessRight = "resolve_unix"
+
+	// FSAccessCreateTmp allows creating temporary files.
+	FSAccessCreateTmp FSAccessRight = "create_tmp"
 )
 
 // ScopeRight represents a Landlock IPC scope restriction.
@@ -125,6 +128,12 @@ const (
 	// via connect() or sending datagrams to a given remote port via
 	// sendto()/sendmsg().
 	NetAccessConnectSendUDP NetAccessRight = "connect_send_udp"
+
+	// NetAccessListenTCP allows listening on a TCP socket.
+	NetAccessListenTCP NetAccessRight = "listen_tcp"
+
+	// NetAccessAcceptTCP allows accepting connections on a TCP socket.
+	NetAccessAcceptTCP NetAccessRight = "accept_tcp"
 )
 
 // PathRule defines the access rights allowed for a specific path hierarchy.

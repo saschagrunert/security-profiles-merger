@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	capNetAdmin  = "NET_ADMIN"
-	capSysTime   = "SYS_TIME"
-	capChown     = "CHOWN"
-	capSysPtrace = "SYS_PTRACE"
+	capNetAdmin    = "NET_ADMIN"
+	capSysTime     = "SYS_TIME"
+	capChown       = "CHOWN"
+	capSysPtrace   = "SYS_PTRACE"
+	capDacOverride = "DAC_OVERRIDE"
 
 	pathEtcConfig = "/etc/config"
 	pathVarLog    = "/var/log"
@@ -46,6 +47,21 @@ const (
 )
 
 func boolPtr(val bool) *bool { return &val }
+
+func allKnownTestCaps() []string {
+	return []string{
+		capChown, capDacOverride, "DAC_READ_SEARCH", "FOWNER", "FSETID",
+		"KILL", "SETGID", "SETUID", "SETPCAP", "LINUX_IMMUTABLE",
+		"NET_BIND_SERVICE", "NET_BROADCAST", capNetAdmin, "NET_RAW",
+		"IPC_LOCK", "IPC_OWNER", "SYS_MODULE", "SYS_RAWIO",
+		"SYS_CHROOT", capSysPtrace, "SYS_PACCT", "SYS_ADMIN",
+		"SYS_BOOT", "SYS_NICE", "SYS_RESOURCE", capSysTime,
+		"SYS_TTY_CONFIG", "MKNOD", "LEASE", "AUDIT_WRITE",
+		"AUDIT_CONTROL", "SETFCAP", "MAC_OVERRIDE", "MAC_ADMIN",
+		"SYSLOG", "WAKE_ALARM", "BLOCK_SUSPEND", "AUDIT_READ",
+		"PERFMON", "BPF", "CHECKPOINT_RESTORE",
+	}
+}
 
 func TestIntersectEmpty(t *testing.T) {
 	t.Parallel()
@@ -574,7 +590,7 @@ func TestIntersectThreeProfiles(t *testing.T) {
 		Filesystem: nil,
 		Network:    nil,
 		Capabilities: &apparmor.CapabilityRules{
-			AllowedCapabilities: []string{capChown, capSysPtrace, "DAC_OVERRIDE"},
+			AllowedCapabilities: []string{capChown, capSysPtrace, capDacOverride},
 		},
 	}
 
@@ -1580,6 +1596,33 @@ func TestNormalizeGlobPathPrefix(t *testing.T) {
 	if !slices.Equal(result.Filesystem.ReadOnlyPaths, []string{"/etc/data/*"}) {
 		t.Errorf(
 			"ReadOnlyPaths = %v, want [/etc/data/*]",
+			result.Filesystem.ReadOnlyPaths,
+		)
+	}
+}
+
+func TestNormalizeGlobPathEmptyPrefix(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"**/*.log"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(result.Filesystem.ReadOnlyPaths, []string{"**/*.log"}) {
+		t.Errorf(
+			"ReadOnlyPaths = %v, want [**/*.log]",
 			result.Filesystem.ReadOnlyPaths,
 		)
 	}

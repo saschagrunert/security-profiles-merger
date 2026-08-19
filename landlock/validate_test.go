@@ -280,6 +280,19 @@ func TestValidateEmptyPath(t *testing.T) {
 	}
 }
 
+func TestValidateStrictNil(t *testing.T) {
+	t.Parallel()
+
+	err := landlock.ValidateStrict(nil)
+	if err == nil {
+		t.Fatal("expected error for nil profile")
+	}
+
+	if !errors.Is(err, landlock.ErrNilProfile) {
+		t.Errorf("expected ErrNilProfile, got: %v", err)
+	}
+}
+
 func TestValidateStrictInvalidProfile(t *testing.T) {
 	t.Parallel()
 
@@ -440,6 +453,7 @@ func TestValidateAllKnownFSRights(t *testing.T) {
 		landlock.FSAccessTruncate,
 		landlock.FSAccessIOCTLDev,
 		landlock.FSAccessResolveUnix,
+		landlock.FSAccessCreateTmp,
 	}
 
 	profile := &landlock.Profile{
@@ -464,6 +478,8 @@ func TestValidateAllKnownNetRights(t *testing.T) {
 		landlock.NetAccessConnectTCP,
 		landlock.NetAccessBindUDP,
 		landlock.NetAccessConnectSendUDP,
+		landlock.NetAccessListenTCP,
+		landlock.NetAccessAcceptTCP,
 	}
 
 	profile := &landlock.Profile{

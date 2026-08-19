@@ -44,6 +44,7 @@ func allFSRightsForFuzz() []landlock.FSAccessRight {
 		landlock.FSAccessTruncate,
 		landlock.FSAccessIOCTLDev,
 		landlock.FSAccessResolveUnix,
+		landlock.FSAccessCreateTmp,
 	}
 }
 
@@ -53,6 +54,8 @@ func allNetRightsForFuzz() []landlock.NetAccessRight {
 		landlock.NetAccessConnectTCP,
 		landlock.NetAccessBindUDP,
 		landlock.NetAccessConnectSendUDP,
+		landlock.NetAccessListenTCP,
+		landlock.NetAccessAcceptTCP,
 	}
 }
 
@@ -227,12 +230,12 @@ func addLandlockFuzzSeeds(f *testing.F) {
 
 	// Disjoint paths.
 	f.Add(
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x00),
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x00),
 		"/a", "/b",
 		uint32(0x01), uint32(0x02),
 		uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x03),
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x03),
 		"/c", "/d",
 		uint32(0x04), uint32(0x08),
 		uint16(8080), uint16(9090),
@@ -241,12 +244,12 @@ func addLandlockFuzzSeeds(f *testing.F) {
 
 	// All FS rights handled, empty access lists.
 	f.Add(
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x03),
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x03),
 		"/etc", "/home",
 		uint32(0x00), uint32(0x00),
 		uint16(80), uint16(443),
 		uint8(0x00), uint8(0x00),
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x03),
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x03),
 		"/etc", "/tmp",
 		uint32(0x00), uint32(0x00),
 		uint16(80), uint16(8080),
@@ -1008,12 +1011,12 @@ func FuzzLandlockValidateStrict(f *testing.F) {
 		uint8(0x01), uint8(0x02),
 	)
 	f.Add(
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x00), "/a", "/b",
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x00), "/a", "/b",
 		uint32(0x01), uint32(0x02), uint16(80), uint16(443),
 		uint8(0x01), uint8(0x02),
 	)
 	f.Add(
-		uint32(0x1FFFF), uint8(0x0F), uint8(0x03), "/etc", "/home",
+		uint32(0x3FFFF), uint8(0x3F), uint8(0x03), "/etc", "/home",
 		uint32(0x00), uint32(0x00), uint16(80), uint16(443),
 		uint8(0x00), uint8(0x00),
 	)

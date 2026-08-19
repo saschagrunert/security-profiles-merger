@@ -95,6 +95,53 @@ func BenchmarkLandlockIntersect(b *testing.B) {
 	}
 }
 
+func BenchmarkLandlockIntersectDisjoint(b *testing.B) {
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+		},
+		Scoped: nil,
+		PathRules: []landlock.PathRule{
+			{Path: pathEtc, AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
+			{Path: pathHome, AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile}},
+		},
+		NetRules: []landlock.NetRule{
+			{Port: 80, AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP}},
+		},
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessExecute,
+		},
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessConnectTCP,
+		},
+		Scoped: nil,
+		PathRules: []landlock.PathRule{
+			{Path: "/var", AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
+			{Path: "/tmp", AccessFS: []landlock.FSAccessRight{landlock.FSAccessExecute}},
+		},
+		NetRules: []landlock.NetRule{
+			{Port: 443, AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP}},
+		},
+	}
+
+	for range b.N {
+		result, err := landlock.Intersect(left, right)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		_ = result
+	}
+}
+
 func BenchmarkLandlockUnion(b *testing.B) {
 	for _, numPaths := range []int{10, 50, 200} {
 		left := buildLandlockProfile(numPaths)

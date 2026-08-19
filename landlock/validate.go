@@ -38,7 +38,7 @@ var (
 	ErrUnhandledRight = errors.New("rule grants unhandled access right")
 
 	// ErrDuplicateRight is returned when the same access right appears
-	// more than once in a handled set or rule.
+	// more than once in a handled set, rule, or scoped set.
 	ErrDuplicateRight = errors.New("duplicate access right")
 )
 
@@ -197,7 +197,8 @@ func isKnownFSRight(right FSAccessRight) bool {
 		FSAccessRefer,
 		FSAccessTruncate,
 		FSAccessIOCTLDev,
-		FSAccessResolveUnix:
+		FSAccessResolveUnix,
+		FSAccessCreateTmp:
 		return true
 	default:
 		return false
@@ -216,7 +217,8 @@ func isKnownScopeRight(right ScopeRight) bool {
 func isKnownNetRight(right NetAccessRight) bool {
 	switch right {
 	case NetAccessBindTCP, NetAccessConnectTCP,
-		NetAccessBindUDP, NetAccessConnectSendUDP:
+		NetAccessBindUDP, NetAccessConnectSendUDP,
+		NetAccessListenTCP, NetAccessAcceptTCP:
 		return true
 	default:
 		return false
