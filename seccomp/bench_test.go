@@ -155,6 +155,21 @@ func BenchmarkUnionWithArgs(b *testing.B) {
 	}
 }
 
+func BenchmarkValidateStrict(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		profile := buildProfile(numSyscalls)
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				err := seccomp.ValidateStrict(profile)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkIntersectDisjoint(b *testing.B) {
 	for _, numSyscalls := range []int{10, 50, 200} {
 		left := buildProfile(numSyscalls)

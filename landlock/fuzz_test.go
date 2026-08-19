@@ -900,3 +900,42 @@ func FuzzLandlockUnion(f *testing.F) {
 		)
 	})
 }
+
+func FuzzLandlockValidateStrict(f *testing.F) {
+	f.Add(
+		uint32(0x07), uint8(0x03), "/etc", "/home",
+		uint32(0x05), uint32(0x03), uint16(80), uint16(443),
+		uint8(0x01), uint8(0x02),
+	)
+	f.Add(
+		uint32(0x03), uint8(0x01), "/etc", "/home",
+		uint32(0x01), uint32(0x02), uint16(80), uint16(443),
+		uint8(0x01), uint8(0x02),
+	)
+	f.Add(
+		uint32(0x1FFFF), uint8(0x0F), "/a", "/b",
+		uint32(0x01), uint32(0x02), uint16(80), uint16(443),
+		uint8(0x01), uint8(0x02),
+	)
+	f.Add(
+		uint32(0x1FFFF), uint8(0x0F), "/etc", "/home",
+		uint32(0x00), uint32(0x00), uint16(80), uint16(443),
+		uint8(0x00), uint8(0x00),
+	)
+
+	f.Fuzz(func(
+		_ *testing.T,
+		hfs uint32, hnet uint8,
+		path1, path2 string,
+		am1, am2 uint32,
+		port1, port2 uint16,
+		nm1, nm2 uint8,
+	) {
+		profile := fuzzLandlockProfile(
+			hfs, hnet, path1, path2,
+			am1, am2, port1, port2, nm1, nm2,
+		)
+
+		_ = landlock.ValidateStrict(profile)
+	})
+}

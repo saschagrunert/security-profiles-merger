@@ -149,7 +149,7 @@ func unionSliceSmall[T comparable](left, right []T) []T {
 
 func unionSliceLarge[T comparable](left, right []T) []T {
 	result := make([]T, 0, len(left)+len(right))
-	seen := make(map[T]struct{})
+	seen := make(map[T]struct{}, len(left)+len(right))
 
 	for _, val := range left {
 		if _, ok := seen[val]; !ok {

@@ -45,7 +45,7 @@ help: ## Display this help
 .PHONY: build
 build: ## Build the spm binary (static)
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 $(GO) build -o $(BUILD_DIR)/spm ./cmd/spm/
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o $(BUILD_DIR)/spm ./cmd/spm/
 
 ##@ Development
 

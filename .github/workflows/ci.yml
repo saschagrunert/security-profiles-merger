@@ -71,12 +71,21 @@ jobs:
           - name: landlock / union
             package: ./landlock/
             target: FuzzLandlockUnion
+          - name: seccomp / validate-strict
+            package: ./seccomp/
+            target: FuzzValidateStrict
+          - name: apparmor / validate-strict
+            package: ./apparmor/
+            target: FuzzAppArmorValidateStrict
+          - name: landlock / validate-strict
+            package: ./landlock/
+            target: FuzzLandlockValidateStrict
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ matrix.package }}testdata/fuzz
           key: fuzz-${{ matrix.name }}-${{ github.sha }}
@@ -106,7 +115,7 @@ jobs:
         with:
           name: benchmark-${{ matrix.name }}
           path: benchmark.txt
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ./cache
           key: benchmark-${{ matrix.name }}-${{ github.sha }}

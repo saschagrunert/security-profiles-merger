@@ -23,11 +23,15 @@ import (
 	"os"
 )
 
+var version = "dev"
+
 const (
 	exitUsage = 2
 
 	cmdMerge    = "merge"
 	cmdValidate = "validate"
+
+	flagHelp = "--help"
 
 	typeSeccomp  = "seccomp"
 	typeAppArmor = "apparmor"
@@ -65,6 +69,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runMerge(args[1:], stdin, stdout, stderr)
 	case cmdValidate:
 		return runValidate(args[1:], stdin, stdout, stderr)
+	case "version", "--version", "-v":
+		_, _ = fmt.Fprintf(stdout, "spm %s\n", version)
+
+		return 0
+	case flagHelp, "-h", "help":
+		_, _ = fmt.Fprint(stdout, usage)
+
+		return 0
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown command: %s\n\n%s", args[0], usage)
 

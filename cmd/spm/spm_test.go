@@ -57,6 +57,38 @@ func TestNoArgs(t *testing.T) {
 	}
 }
 
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range []string{"version", "--version", "-v"} {
+		code, stdout, _ := runCapture(t, []string{flag}, nil)
+
+		if code != 0 {
+			t.Fatalf("flag %q: exit code = %d, want 0", flag, code)
+		}
+
+		if !strings.Contains(stdout, "spm ") {
+			t.Errorf("flag %q: stdout should contain version, got: %s", flag, stdout)
+		}
+	}
+}
+
+func TestHelp(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range []string{flagHelp, "-h", "help"} {
+		code, stdout, _ := runCapture(t, []string{flag}, nil)
+
+		if code != 0 {
+			t.Fatalf("flag %q: exit code = %d, want 0", flag, code)
+		}
+
+		if !strings.Contains(stdout, "Usage:") {
+			t.Errorf("flag %q: stdout should contain usage, got: %s", flag, stdout)
+		}
+	}
+}
+
 func TestUnknownCommand(t *testing.T) {
 	t.Parallel()
 

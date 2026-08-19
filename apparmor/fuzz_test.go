@@ -482,3 +482,23 @@ func FuzzAppArmorUnion(f *testing.F) {
 		)
 	})
 }
+
+func FuzzAppArmorValidateStrict(f *testing.F) {
+	f.Add("NET_ADMIN", "SYS_TIME", "/etc/config", "/var/log", true, true, false)
+	f.Add("CHOWN", "SYS_PTRACE", "/etc/config", "/var/log", false, false, true)
+	f.Add("NET_ADMIN", "CHOWN", "/etc/config", "/tmp", true, true, true)
+	f.Add("CAP_A", "CAP_A", "/x", "/y", true, false, true)
+
+	f.Fuzz(func(
+		_ *testing.T,
+		cap1, cap2, path1, path2 string,
+		allowRaw, allowTCP, allowUDP bool,
+	) {
+		profile := fuzzAppArmorProfile(
+			cap1, cap2, path1, path2,
+			allowRaw, allowTCP, allowUDP,
+		)
+
+		_ = apparmor.ValidateStrict(profile)
+	})
+}

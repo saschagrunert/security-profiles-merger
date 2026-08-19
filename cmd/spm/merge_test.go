@@ -31,7 +31,7 @@ import (
 func TestMergeHelp(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runCapture(t, []string{cmdMerge, "--help"}, nil)
+	code, _, stderr := runCapture(t, []string{cmdMerge, flagHelp}, nil)
 
 	if code != exitUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitUsage)
