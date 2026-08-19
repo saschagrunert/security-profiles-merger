@@ -56,6 +56,7 @@ func buildLandlockProfile(numPaths int) *landlock.Profile {
 			landlock.NetAccessBindTCP,
 			landlock.NetAccessConnectTCP,
 		},
+		Scoped:    nil,
 		PathRules: pathRules,
 		NetRules:  netRules,
 	}

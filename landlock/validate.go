@@ -73,6 +73,16 @@ func Validate(profile *Profile) error {
 		errs = append(errs, err)
 	}
 
+	err = validateRights("Scoped", profile.Scoped, isKnownScopeRight)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDuplicateRights("Scoped", profile.Scoped)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	errs = append(errs, validatePathRules(profile.PathRules)...)
 	errs = append(errs, validateNetRules(profile.NetRules)...)
 
@@ -194,11 +204,19 @@ func isKnownFSRight(right FSAccessRight) bool {
 	}
 }
 
+func isKnownScopeRight(right ScopeRight) bool {
+	switch right {
+	case ScopeAbstractUnixSocket, ScopeSignal:
+		return true
+	default:
+		return false
+	}
+}
+
 func isKnownNetRight(right NetAccessRight) bool {
 	switch right {
 	case NetAccessBindTCP, NetAccessConnectTCP,
-		NetAccessBindUDP, NetAccessConnectUDP,
-		NetAccessSendtoUDP:
+		NetAccessBindUDP, NetAccessConnectSendUDP:
 		return true
 	default:
 		return false

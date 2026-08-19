@@ -60,6 +60,7 @@ func TestProfileString(t *testing.T) {
 		HandledAccessNet: []landlock.NetAccessRight{
 			landlock.NetAccessBindTCP,
 		},
+		Scoped: nil,
 		PathRules: []landlock.PathRule{{
 			Path:     "/home",
 			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
@@ -76,12 +77,33 @@ func TestProfileString(t *testing.T) {
 	}
 }
 
+func TestProfileStringScoped(t *testing.T) {
+	t.Parallel()
+
+	profile := landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped: []landlock.ScopeRight{
+			landlock.ScopeAbstractUnixSocket,
+			landlock.ScopeSignal,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	want := "Profile{scoped:abstract_unix_socket,signal}"
+	if got := profile.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestProfileStringEmpty(t *testing.T) {
 	t.Parallel()
 
 	profile := landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -110,6 +132,7 @@ func TestFormatProfileNonNil(t *testing.T) {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}

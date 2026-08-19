@@ -29,6 +29,7 @@ func ExampleIntersect() {
 			landlock.FSAccessWriteFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -45,6 +46,7 @@ func ExampleIntersect() {
 			landlock.FSAccessWriteFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -74,6 +76,7 @@ func ExampleValidate() {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"bogus_right"},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -91,6 +94,7 @@ func ExampleValidateStrict() {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -114,6 +118,7 @@ func ExampleFormatProfile() {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -135,6 +140,7 @@ func ExampleUnion() {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -150,6 +156,7 @@ func ExampleUnion() {
 			landlock.FSAccessWriteFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathHome,
 			AccessFS: []landlock.FSAccessRight{

@@ -16,6 +16,7 @@
   - [Errors](#errors-2)
   - [Types](#types-1)
   - [Handled access semantics](#handled-access-semantics)
+  - [IPC scoping](#ipc-scoping)
   - [Path and network rules](#path-and-network-rules)
 <!-- /toc -->
 
@@ -196,16 +197,16 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 ### Functions
 
 - `landlock.Intersect(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via intersection. HandledAccessFS and HandledAccessNet are
-  unioned (more handled rights = more restrictive). Path and network rules
-  are intersected per key.
+  Merge profiles via intersection. HandledAccessFS, HandledAccessNet, and
+  Scoped are unioned (more handled rights / scoping = more restrictive).
+  Path and network rules are intersected per key.
 - `landlock.Union(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via union. HandledAccessFS and HandledAccessNet are
-  intersected (fewer handled rights = less restrictive). Path and network
-  rules are unioned per key.
+  Merge profiles via union. HandledAccessFS, HandledAccessNet, and Scoped
+  are intersected (fewer handled rights / scoping = less restrictive).
+  Path and network rules are unioned per key.
 - `landlock.Validate(profile *Profile) error` -
   Checks that a profile contains only known access rights, has no empty paths,
-  and has no duplicate path or port rules.
+  and has no duplicate path, port, or scope rules.
 - `landlock.ValidateStrict(profile *Profile) error` -
   Performs all checks from Validate and additionally verifies that every rule's
   access rights are a subset of the corresponding handled access set. Use
@@ -229,10 +230,12 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 
 ### Types
 
-- `Profile` - Top-level Landlock ruleset containing handled access sets and rules.
+- `Profile` - Top-level Landlock ruleset containing handled access sets, scope
+  restrictions, and rules.
 - `FSAccessRight` - Filesystem access right (execute, read_file, write_file, etc.).
 - `NetAccessRight` - Network access right (bind_tcp, connect_tcp, bind_udp,
-  connect_udp, sendto_udp).
+  connect_send_udp).
+- `ScopeRight` - IPC scope restriction (abstract_unix_socket, signal).
 - `PathRule` - Per-path filesystem access rights.
 - `NetRule` - Per-port network access rights.
 
@@ -241,10 +244,17 @@ formatting.
 
 ### Handled access semantics
 
-Landlock has inverted merge semantics for handled-access sets compared to rules.
-Unhandled access rights are implicitly allowed, so intersection unions the
-handled sets (handling more rights makes the ruleset more restrictive), and union
-intersects them (handling fewer rights makes it less restrictive).
+Landlock has inverted merge semantics for handled-access sets and scope
+restrictions compared to rules. Unhandled access rights are implicitly allowed,
+so intersection unions the handled sets and scoped sets (handling more rights /
+scoping more makes the ruleset more restrictive), and union intersects them
+(handling fewer rights / scoping less makes it less restrictive).
+
+### IPC scoping
+
+Scope restrictions (abstract_unix_socket, signal) have no exceptions via rules.
+Once scoped, access outside the Landlock domain is fully blocked. During merge,
+scoped sets follow the same inverted semantics as handled access sets.
 
 ### Path and network rules
 

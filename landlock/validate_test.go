@@ -44,6 +44,7 @@ func TestValidateValid(t *testing.T) {
 		HandledAccessNet: []landlock.NetAccessRight{
 			landlock.NetAccessBindTCP,
 		},
+		Scoped: nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -70,6 +71,7 @@ func TestValidateUnknownHandledFS(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"bogus_right"},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -86,6 +88,7 @@ func TestValidateUnknownHandledNet(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: []landlock.NetAccessRight{"bogus_net"},
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -102,6 +105,7 @@ func TestValidateUnknownPathRuleRight(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path:     pathEtc,
 			AccessFS: []landlock.FSAccessRight{"read_bogus"},
@@ -121,6 +125,7 @@ func TestValidateUnknownNetRuleRight(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules: []landlock.NetRule{{
 			Port:      80,
@@ -140,6 +145,7 @@ func TestValidateEmpty(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -156,6 +162,7 @@ func TestValidateMultipleErrors(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"bogus_fs"},
 		HandledAccessNet: []landlock.NetAccessRight{"bogus_net"},
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path:     pathEtc,
 			AccessFS: []landlock.FSAccessRight{"read_bogus"},
@@ -193,6 +200,7 @@ func TestValidateDuplicatePathRule(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{
 			{
 				Path:     pathEtc,
@@ -222,6 +230,7 @@ func TestValidateDuplicateNetRule(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules: []landlock.NetRule{
 			{
@@ -253,6 +262,7 @@ func TestValidateEmptyPath(t *testing.T) {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path:     "",
 			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
@@ -276,6 +286,7 @@ func TestValidateStrictInvalidProfile(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"bogus"},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -301,6 +312,7 @@ func TestValidateStrictValid(t *testing.T) {
 		HandledAccessNet: []landlock.NetAccessRight{
 			landlock.NetAccessBindTCP,
 		},
+		Scoped: nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -329,6 +341,7 @@ func TestValidateStrictUnhandledPathRight(t *testing.T) {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path: pathEtc,
 			AccessFS: []landlock.FSAccessRight{
@@ -357,6 +370,7 @@ func TestValidateStrictUnhandledNetRight(t *testing.T) {
 		HandledAccessNet: []landlock.NetAccessRight{
 			landlock.NetAccessBindTCP,
 		},
+		Scoped:    nil,
 		PathRules: nil,
 		NetRules: []landlock.NetRule{{
 			Port: 80,
@@ -383,6 +397,7 @@ func TestValidateStrictCollectsAllErrors(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"bogus"},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path:     pathEtc,
 			AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile},
@@ -430,6 +445,7 @@ func TestValidateAllKnownFSRights(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  all,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -447,13 +463,13 @@ func TestValidateAllKnownNetRights(t *testing.T) {
 		landlock.NetAccessBindTCP,
 		landlock.NetAccessConnectTCP,
 		landlock.NetAccessBindUDP,
-		landlock.NetAccessConnectUDP,
-		landlock.NetAccessSendtoUDP,
+		landlock.NetAccessConnectSendUDP,
 	}
 
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: all,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -461,6 +477,73 @@ func TestValidateAllKnownNetRights(t *testing.T) {
 	err := landlock.Validate(profile)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateAllKnownScopeRights(t *testing.T) {
+	t.Parallel()
+
+	all := []landlock.ScopeRight{
+		landlock.ScopeAbstractUnixSocket,
+		landlock.ScopeSignal,
+	}
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped:           all,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateUnknownScopeRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped:           []landlock.ScopeRight{"bogus_scope"},
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for unknown scope right")
+	}
+
+	if !errors.Is(err, landlock.ErrUnknownRight) {
+		t.Errorf("expected ErrUnknownRight, got: %v", err)
+	}
+}
+
+func TestValidateDuplicateScopeRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped: []landlock.ScopeRight{
+			landlock.ScopeSignal,
+			landlock.ScopeSignal,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate scope right")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRight) {
+		t.Errorf("expected ErrDuplicateRight, got: %v", err)
 	}
 }
 
@@ -473,6 +556,7 @@ func TestValidateDuplicateFSRight(t *testing.T) {
 			landlock.FSAccessReadFile,
 		},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules:         nil,
 	}
@@ -493,6 +577,7 @@ func TestValidateDuplicateNetRight(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  nil,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules:        nil,
 		NetRules: []landlock.NetRule{{
 			Port: 80,

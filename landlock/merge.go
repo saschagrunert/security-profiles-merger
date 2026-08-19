@@ -58,6 +58,7 @@ func Union(profiles ...*Profile) (*Profile, error) {
 type strategy interface {
 	mergeHandledFS(left, right []FSAccessRight) []FSAccessRight
 	mergeHandledNet(left, right []NetAccessRight) []NetAccessRight
+	mergeScoped(left, right []ScopeRight) []ScopeRight
 	mergePathRules(left, right *Profile) []PathRule
 	mergeNetRules(left, right *Profile) []NetRule
 }
@@ -98,6 +99,7 @@ func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 func sortProfile(profile *Profile) {
 	slices.Sort(profile.HandledAccessFS)
 	slices.Sort(profile.HandledAccessNet)
+	slices.Sort(profile.Scoped)
 
 	slices.SortFunc(profile.PathRules, func(a, b PathRule) int {
 		return cmp.Compare(a.Path, b.Path)
@@ -126,6 +128,7 @@ func mergeTwo(
 		HandledAccessNet: mergeStrategy.mergeHandledNet(
 			left.HandledAccessNet, right.HandledAccessNet,
 		),
+		Scoped:    mergeStrategy.mergeScoped(left.Scoped, right.Scoped),
 		PathRules: mergeStrategy.mergePathRules(left, right),
 		NetRules:  mergeStrategy.mergeNetRules(left, right),
 	}
@@ -143,6 +146,12 @@ func (intersectStrategy) mergeHandledFS(
 func (intersectStrategy) mergeHandledNet(
 	left, right []NetAccessRight,
 ) []NetAccessRight {
+	return merge.UnionSlice(left, right)
+}
+
+func (intersectStrategy) mergeScoped(
+	left, right []ScopeRight,
+) []ScopeRight {
 	return merge.UnionSlice(left, right)
 }
 
@@ -227,6 +236,12 @@ func (unionStrategy) mergeHandledFS(
 func (unionStrategy) mergeHandledNet(
 	left, right []NetAccessRight,
 ) []NetAccessRight {
+	return merge.IntersectSlice(left, right)
+}
+
+func (unionStrategy) mergeScoped(
+	left, right []ScopeRight,
+) []ScopeRight {
 	return merge.IntersectSlice(left, right)
 }
 
@@ -373,6 +388,7 @@ func cloneProfile(profile *Profile) *Profile {
 	return &Profile{
 		HandledAccessFS:  slices.Clone(profile.HandledAccessFS),
 		HandledAccessNet: slices.Clone(profile.HandledAccessNet),
+		Scoped:           slices.Clone(profile.Scoped),
 		PathRules:        clonePathRules(profile.PathRules),
 		NetRules:         cloneNetRules(profile.NetRules),
 	}

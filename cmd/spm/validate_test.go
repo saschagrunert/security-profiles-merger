@@ -149,6 +149,7 @@ func TestValidateLandlockInvalid(t *testing.T) {
 	profile := &landlock.Profile{
 		HandledAccessFS:  []landlock.FSAccessRight{"read_file"},
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{
 			{Path: testEtcPath, AccessFS: []landlock.FSAccessRight{"read_file"}},
 			{Path: testEtcPath, AccessFS: []landlock.FSAccessRight{"write_file"}},
