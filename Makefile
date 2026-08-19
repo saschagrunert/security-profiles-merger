@@ -20,7 +20,7 @@ NOCOLOR := \033[0m
 PACKAGES := $(shell $(GO) list ./... | grep -v /internal/)
 
 .PHONY: all
-all: build ## Build the project
+all: build lint test ## Build, lint, and test the project
 
 .PHONY: help
 help: ## Display this help

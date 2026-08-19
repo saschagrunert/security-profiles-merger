@@ -96,3 +96,65 @@ func BenchmarkAppArmorUnion(b *testing.B) {
 		})
 	}
 }
+
+func buildAppArmorGlobProfile(numPaths int) *apparmor.Profile {
+	readOnly := make([]string, 0, numPaths)
+	writeOnly := make([]string, 0, numPaths)
+	executables := make([]string, 0, numPaths)
+
+	for idx := range numPaths {
+		readOnly = append(readOnly, fmt.Sprintf("/read/%d/**", idx))
+		writeOnly = append(writeOnly, fmt.Sprintf("/write/%d/*", idx))
+		executables = append(executables, fmt.Sprintf("/usr/bin/prog%d/**", idx))
+	}
+
+	return &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: executables,
+			AllowedLibraries:   []string{"/usr/lib/**"},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  readOnly,
+			WriteOnlyPaths: writeOnly,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+}
+
+func BenchmarkAppArmorIntersectGlob(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		left := buildAppArmorGlobProfile(numPaths)
+		right := buildAppArmorGlobProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				result, err := apparmor.Intersect(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}
+
+func BenchmarkAppArmorUnionGlob(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		left := buildAppArmorGlobProfile(numPaths)
+		right := buildAppArmorGlobProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				result, err := apparmor.Union(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}

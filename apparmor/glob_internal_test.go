@@ -34,3 +34,35 @@ func TestGlobRegexCacheEviction(t *testing.T) {
 		t.Error("cache count should have been reset after eviction")
 	}
 }
+
+func TestGlobLiteralPrefix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		want    string
+	}{
+		{"no glob tokens", "/var/log/syslog", "/var/log/syslog"},
+		{"trailing double star", "/var/log/**", "/var/log/"},
+		{"mid path star", "/var/*/foo", "/var/"},
+		{"leading double star", "**", ""},
+		{"leading star", "*", ""},
+		{"question mark no slash", "?foo", ""},
+		{"brace at start", "{a,b}/path", ""},
+		{"glob after root", "/*.log", "/"},
+		{"empty pattern", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := globLiteralPrefix(test.pattern)
+			if got != test.want {
+				t.Errorf("globLiteralPrefix(%q) = %q, want %q",
+					test.pattern, got, test.want)
+			}
+		})
+	}
+}

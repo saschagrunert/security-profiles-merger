@@ -31,7 +31,7 @@ var (
 	ErrDuplicateRule = errors.New("duplicate rule")
 
 	// ErrEmptyPath is returned when a path rule has an empty path string.
-	ErrEmptyPath = errors.New("empty path in path rule")
+	ErrEmptyPath = errors.New("empty path")
 
 	// ErrUnhandledRight is returned when a rule grants an access right
 	// that is not listed in the profile's handled access set.
