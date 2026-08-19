@@ -67,8 +67,9 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   has at least one name.
 - `seccomp.ValidateStrict(profile *specs.LinuxSeccomp) error` -
   Performs all checks from Validate and additionally detects duplicate syscall
-  names across entries. Use Validate for merge inputs and ValidateStrict for
-  user-authored profiles.
+  names across entries, unknown architectures, unknown flags, unknown arg
+  operators, and out-of-range arg indices. Use Validate for merge inputs and
+  ValidateStrict for user-authored profiles.
 - `seccomp.FormatProfile(profile *specs.LinuxSeccomp) string` -
   Returns a human-readable representation of a seccomp profile.
 
@@ -82,6 +83,14 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   empty string in its name list.
 - `seccomp.ErrDuplicateSyscallName` - returned by ValidateStrict when the same
   syscall name appears in multiple entries.
+- `seccomp.ErrUnknownOperator` - returned by ValidateStrict when a syscall arg
+  contains an unrecognized comparison operator.
+- `seccomp.ErrArgIndexOutOfRange` - returned by ValidateStrict when a syscall
+  arg index exceeds the maximum (5).
+- `seccomp.ErrUnknownArch` - returned by ValidateStrict when a profile contains
+  an unrecognized architecture.
+- `seccomp.ErrUnknownFlag` - returned by ValidateStrict when a profile contains
+  an unrecognized seccomp flag.
 
 **Merge semantics:**
 
@@ -136,6 +145,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
   Validate for merge inputs and ValidateStrict for user-authored profiles.
 - `apparmor.FormatProfile(profile *Profile) string` -
   Returns a human-readable representation of an AppArmor profile.
+- `apparmor.IsGlobPattern(path string) bool` -
+  Reports whether the path contains AppArmor glob tokens.
 
 **Errors:**
 

@@ -35,11 +35,11 @@ func (p Profile) String() string {
 	var parts []string
 
 	if len(p.HandledAccessFS) > 0 {
-		parts = append(parts, "fs:"+joinFS(p.HandledAccessFS))
+		parts = append(parts, "fs:"+joinRights(p.HandledAccessFS))
 	}
 
 	if len(p.HandledAccessNet) > 0 {
-		parts = append(parts, "net:"+joinNet(p.HandledAccessNet))
+		parts = append(parts, "net:"+joinRights(p.HandledAccessNet))
 	}
 
 	for _, rule := range p.PathRules {
@@ -55,25 +55,15 @@ func (p Profile) String() string {
 
 // String returns a human-readable representation of the path rule.
 func (r PathRule) String() string {
-	return fmt.Sprintf("%s(%s)", r.Path, joinFS(r.AccessFS))
+	return fmt.Sprintf("%s(%s)", r.Path, joinRights(r.AccessFS))
 }
 
 // String returns a human-readable representation of the network rule.
 func (r NetRule) String() string {
-	return fmt.Sprintf(":%d(%s)", r.Port, joinNet(r.AccessNet))
+	return fmt.Sprintf(":%d(%s)", r.Port, joinRights(r.AccessNet))
 }
 
-func joinFS(rights []FSAccessRight) string {
-	strs := make([]string, len(rights))
-
-	for idx, r := range rights {
-		strs[idx] = string(r)
-	}
-
-	return strings.Join(strs, ",")
-}
-
-func joinNet(rights []NetAccessRight) string {
+func joinRights[T ~string](rights []T) string {
 	strs := make([]string, len(rights))
 
 	for idx, r := range rights {

@@ -262,3 +262,225 @@ func TestValidateStrictCollectsAllErrors(t *testing.T) {
 		t.Error("expected ErrDuplicateSyscallName alongside Validate errors")
 	}
 }
+
+func TestValidateStrictCollectsAllNewErrors(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{"SCMP_ARCH_BOGUS"},
+		Flags:         []specs.LinuxSeccompFlag{"SECCOMP_FILTER_FLAG_BOGUS"},
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 6, Value: 1, Op: "SCMP_CMP_BOGUS"},
+				},
+			},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error from ValidateStrict")
+	}
+
+	for _, sentinel := range []error{
+		seccomp.ErrUnknownArch,
+		seccomp.ErrUnknownFlag,
+		seccomp.ErrUnknownOperator,
+		seccomp.ErrArgIndexOutOfRange,
+	} {
+		if !errors.Is(err, sentinel) {
+			t.Errorf("expected %v in error, got: %v", sentinel, err)
+		}
+	}
+}
+
+func TestValidateStrictUnknownArch(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{"SCMP_ARCH_BOGUS"},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for unknown architecture")
+	}
+
+	if !errors.Is(err, seccomp.ErrUnknownArch) {
+		t.Errorf("expected ErrUnknownArch, got: %v", err)
+	}
+}
+
+func TestValidateStrictAllKnownArchs(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{
+			specs.ArchX86, specs.ArchX86_64, specs.ArchX32,
+			specs.ArchARM, specs.ArchAARCH64,
+			specs.ArchMIPS, specs.ArchMIPS64, specs.ArchMIPS64N32,
+			specs.ArchMIPSEL, specs.ArchMIPSEL64, specs.ArchMIPSEL64N32,
+			specs.ArchPPC, specs.ArchPPC64, specs.ArchPPC64LE,
+			specs.ArchS390, specs.ArchS390X,
+			specs.ArchPARISC, specs.ArchPARISC64,
+			specs.ArchRISCV64, specs.ArchLOONGARCH64,
+			specs.ArchM68K, specs.ArchSH, specs.ArchSHEB,
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictUnknownFlag(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags:         []specs.LinuxSeccompFlag{"SECCOMP_FILTER_FLAG_BOGUS"},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+
+	if !errors.Is(err, seccomp.ErrUnknownFlag) {
+		t.Errorf("expected ErrUnknownFlag, got: %v", err)
+	}
+}
+
+func TestValidateStrictAllKnownFlags(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags: []specs.LinuxSeccompFlag{
+			specs.LinuxSeccompFlagLog,
+			specs.LinuxSeccompFlagSpecAllow,
+			specs.LinuxSeccompFlagWaitKillableRecv,
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictUnknownArgOperator(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, Op: "SCMP_CMP_BOGUS"},
+				},
+			},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for unknown operator")
+	}
+
+	if !errors.Is(err, seccomp.ErrUnknownOperator) {
+		t.Errorf("expected ErrUnknownOperator, got: %v", err)
+	}
+}
+
+func TestValidateStrictArgIndexOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 6, Value: 1, Op: specs.OpEqualTo},
+				},
+			},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for arg index out of range")
+	}
+
+	if !errors.Is(err, seccomp.ErrArgIndexOutOfRange) {
+		t.Errorf("expected ErrArgIndexOutOfRange, got: %v", err)
+	}
+}
+
+func TestValidateStrictValidArgs(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, Op: specs.OpEqualTo},
+					{Index: 5, Value: 2, Op: specs.OpMaskedEqual},
+				},
+			},
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateStrictAllKnownOperators(t *testing.T) {
+	t.Parallel()
+
+	operators := []specs.LinuxSeccompOperator{
+		specs.OpNotEqual, specs.OpLessThan, specs.OpLessEqual,
+		specs.OpEqualTo, specs.OpGreaterEqual, specs.OpGreaterThan,
+		specs.OpMaskedEqual,
+	}
+
+	for _, operator := range operators {
+		t.Run(string(operator), func(t *testing.T) {
+			t.Parallel()
+
+			profile := &specs.LinuxSeccomp{
+				DefaultAction: specs.ActErrno,
+				Syscalls: []specs.LinuxSyscall{
+					{
+						Names:  []string{syscallRead},
+						Action: specs.ActAllow,
+						Args: []specs.LinuxSeccompArg{
+							{Index: 0, Value: 1, Op: operator},
+						},
+					},
+				},
+			}
+
+			err := seccomp.ValidateStrict(profile)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
