@@ -36,7 +36,7 @@ func intersectCases() []struct {
 		right []string
 		want  []string
 	}{
-		{name: "both empty", left: nil, right: nil, want: nil},
+		{name: "both empty", left: nil, right: nil, want: nil}, //nolint:goconst // test case name
 		{name: "left empty", left: nil, right: []string{"a", "b"}, want: nil},
 		{name: "right empty", left: []string{"a", "b"}, right: nil, want: nil},
 		{name: "no overlap", left: []string{"a", "b"}, right: []string{"c", "d"}, want: nil},
@@ -371,6 +371,61 @@ func TestFormatDiffItems(t *testing.T) {
 			got := merge.FormatDiffItems(test.prefix, test.removed, test.added)
 			if got != test.want {
 				t.Errorf("FormatDiffItems() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDiffSlice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		left, right []string
+		wantAdded   []string
+		wantRemoved []string
+	}{
+		{
+			name: "both empty", left: nil, right: nil,
+			wantAdded: nil, wantRemoved: nil,
+		},
+		{
+			name: "equal", left: []string{"a", "b"}, right: []string{"a", "b"},
+			wantAdded: nil, wantRemoved: nil,
+		},
+		{
+			name: "added only", left: nil, right: []string{"a"},
+			wantAdded: []string{"a"}, wantRemoved: nil,
+		},
+		{
+			name: "removed only", left: []string{"a"}, right: nil,
+			wantAdded: nil, wantRemoved: []string{"a"},
+		},
+		{
+			name:      "both added and removed",
+			left:      []string{"a", "b"},
+			right:     []string{"b", "c"},
+			wantAdded: []string{"c"}, wantRemoved: []string{"a"},
+		},
+		{
+			name:      "duplicates ignored",
+			left:      []string{"a", "a", "b"},
+			right:     []string{"b", "c", "c"},
+			wantAdded: []string{"c"}, wantRemoved: []string{"a"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			added, removed := merge.DiffSlice(test.left, test.right)
+			if !slices.Equal(added, test.wantAdded) {
+				t.Errorf("added = %v, want %v", added, test.wantAdded)
+			}
+
+			if !slices.Equal(removed, test.wantRemoved) {
+				t.Errorf("removed = %v, want %v", removed, test.wantRemoved)
 			}
 		})
 	}

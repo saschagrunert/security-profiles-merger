@@ -1031,6 +1031,24 @@ func FuzzLandlockDiff(f *testing.F) {
 
 		landlock.FormatDiff(diff)
 
+		reverse, err := landlock.Diff(right, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff.Equal != reverse.Equal {
+			t.Error("Diff(L,R).Equal != Diff(R,L).Equal")
+		}
+
+		assertRightsDiffSwapped(t, "HandledAccessFS", diff.HandledAccessFS, reverse.HandledAccessFS)
+		assertRightsDiffSwapped(
+			t,
+			"HandledAccessNet",
+			diff.HandledAccessNet,
+			reverse.HandledAccessNet,
+		)
+		assertRightsDiffSwapped(t, "Scoped", diff.Scoped, reverse.Scoped)
+
 		selfDiff, err := landlock.Diff(left, left)
 		if err != nil {
 			t.Fatal(err)
@@ -1079,4 +1097,29 @@ func FuzzLandlockValidateStrict(f *testing.F) {
 
 		_ = landlock.ValidateStrict(profile)
 	})
+}
+
+func assertRightsDiffSwapped[T comparable](
+	t *testing.T, label string,
+	fwd, rev *landlock.RightsDiff[T],
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Errorf("%s: nil mismatch", label)
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if !slices.Equal(fwd.Added, rev.Removed) {
+		t.Errorf("%s: forward Added != reverse Removed", label)
+	}
+
+	if !slices.Equal(fwd.Removed, rev.Added) {
+		t.Errorf("%s: forward Removed != reverse Added", label)
+	}
 }

@@ -17,7 +17,6 @@ limitations under the License.
 package landlock
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -45,6 +44,9 @@ type ProfileDiff struct {
 	// NetRules is set when the network rules differ.
 	NetRules *NetRulesDiff `json:"netRules,omitempty"`
 }
+
+// IsEqual returns whether the two compared profiles are identical.
+func (d ProfileDiff) IsEqual() bool { return d.Equal }
 
 // RightsDiff represents added and removed items in a rights set.
 type RightsDiff[T comparable] struct {
@@ -83,6 +85,7 @@ type NetRuleChange struct {
 }
 
 // Diff compares two Landlock profiles and returns a structured diff.
+// Unlike Intersect and Union, Diff does not validate profiles before comparing.
 // Returns ErrNilProfile if either profile is nil.
 func Diff(left, right *Profile) (*ProfileDiff, error) {
 	if left == nil || right == nil {
@@ -98,20 +101,14 @@ func Diff(left, right *Profile) (*ProfileDiff, error) {
 		NetRules:         nil,
 	}
 
-	diffRightsSet(
-		diff, left.HandledAccessFS, right.HandledAccessFS,
-		func(result *RightsDiff[FSAccessRight]) { diff.HandledAccessFS = result },
-	)
+	setRightsDiff(diff, left.HandledAccessFS, right.HandledAccessFS,
+		func(r *RightsDiff[FSAccessRight]) { diff.HandledAccessFS = r })
 
-	diffRightsSet(
-		diff, left.HandledAccessNet, right.HandledAccessNet,
-		func(result *RightsDiff[NetAccessRight]) { diff.HandledAccessNet = result },
-	)
+	setRightsDiff(diff, left.HandledAccessNet, right.HandledAccessNet,
+		func(r *RightsDiff[NetAccessRight]) { diff.HandledAccessNet = r })
 
-	diffRightsSet(
-		diff, left.Scoped, right.Scoped,
-		func(result *RightsDiff[ScopeRight]) { diff.Scoped = result },
-	)
+	setRightsDiff(diff, left.Scoped, right.Scoped,
+		func(r *RightsDiff[ScopeRight]) { diff.Scoped = r })
 
 	diffPathRules(diff, left.PathRules, right.PathRules)
 	diffNetRules(diff, left.NetRules, right.NetRules)
@@ -119,41 +116,15 @@ func Diff(left, right *Profile) (*ProfileDiff, error) {
 	return diff, nil
 }
 
-func diffRightsSet[T cmp.Ordered](
+func setRightsDiff[T ~string](
 	diff *ProfileDiff,
 	left, right []T,
 	setter func(*RightsDiff[T]),
 ) {
-	leftSet := make(map[T]struct{}, len(left))
-	for _, item := range left {
-		leftSet[item] = struct{}{}
-	}
-
-	rightSet := make(map[T]struct{}, len(right))
-	for _, item := range right {
-		rightSet[item] = struct{}{}
-	}
-
-	var added, removed []T
-
-	for item := range leftSet {
-		if _, ok := rightSet[item]; !ok {
-			removed = append(removed, item)
-		}
-	}
-
-	for item := range rightSet {
-		if _, ok := leftSet[item]; !ok {
-			added = append(added, item)
-		}
-	}
-
+	added, removed := merge.DiffSlice(left, right)
 	if len(added) == 0 && len(removed) == 0 {
 		return
 	}
-
-	slices.Sort(added)
-	slices.Sort(removed)
 
 	diff.Equal = false
 

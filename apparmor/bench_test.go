@@ -99,6 +99,21 @@ func BenchmarkAppArmorUnion(b *testing.B) {
 	}
 }
 
+func BenchmarkAppArmorValidate(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		profile := buildAppArmorProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				err := apparmor.Validate(profile)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkAppArmorValidateStrict(b *testing.B) {
 	for _, numPaths := range []int{10, 50, 200} {
 		profile := buildAppArmorProfile(numPaths)

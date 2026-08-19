@@ -485,6 +485,18 @@ func FuzzDiff(f *testing.F) {
 
 		seccomp.FormatDiff(diff)
 
+		reverse, err := seccomp.Diff(right, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff.Equal != reverse.Equal {
+			t.Error("Diff(L,R).Equal != Diff(R,L).Equal")
+		}
+
+		assertSliceDiffSwapped(t, "Architectures", diff.Architectures, reverse.Architectures)
+		assertSliceDiffSwapped(t, "Flags", diff.Flags, reverse.Flags)
+
 		selfDiff, err := seccomp.Diff(left, left)
 		if err != nil {
 			t.Fatal(err)
@@ -567,4 +579,29 @@ func FuzzValidateStrict(f *testing.F) { //nolint:funlen // fuzz seeds need many 
 
 		_ = seccomp.ValidateStrict(profile)
 	})
+}
+
+func assertSliceDiffSwapped[T comparable](
+	t *testing.T, label string,
+	fwd, rev *seccomp.SliceDiff[T],
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Errorf("%s: nil mismatch", label)
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if !slices.Equal(fwd.Added, rev.Removed) {
+		t.Errorf("%s: forward Added != reverse Removed", label)
+	}
+
+	if !slices.Equal(fwd.Removed, rev.Added) {
+		t.Errorf("%s: forward Removed != reverse Added", label)
+	}
 }

@@ -110,28 +110,20 @@ func readDiffInputs(
 	return readInputs(paths, stdin)
 }
 
+type equalChecker interface {
+	IsEqual() bool
+}
+
 func dispatchDiff(
 	data [][]byte, profileType, format string, stdout, stderr io.Writer,
 ) int {
 	switch profileType {
 	case typeSeccomp:
-		return diffProfiles(
-			data, format, seccomp.Diff, seccomp.FormatDiff,
-			func(diff *seccomp.ProfileDiff) bool { return diff.Equal },
-			stdout, stderr,
-		)
+		return diffProfiles(data, format, seccomp.Diff, seccomp.FormatDiff, stdout, stderr)
 	case typeAppArmor:
-		return diffProfiles(
-			data, format, apparmor.Diff, apparmor.FormatDiff,
-			func(diff *apparmor.ProfileDiff) bool { return diff.Equal },
-			stdout, stderr,
-		)
+		return diffProfiles(data, format, apparmor.Diff, apparmor.FormatDiff, stdout, stderr)
 	case typeLandlock:
-		return diffProfiles(
-			data, format, landlock.Diff, landlock.FormatDiff,
-			func(diff *landlock.ProfileDiff) bool { return diff.Equal },
-			stdout, stderr,
-		)
+		return diffProfiles(data, format, landlock.Diff, landlock.FormatDiff, stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(
 			stderr,
@@ -143,12 +135,11 @@ func dispatchDiff(
 	}
 }
 
-func diffProfiles[T any, D any](
+func diffProfiles[T any, D equalChecker](
 	data [][]byte,
 	format string,
 	diffFn func(*T, *T) (*D, error),
 	formatFn func(*D) string,
-	isEqual func(*D) bool,
 	stdout, stderr io.Writer,
 ) int {
 	profiles, err := unmarshalAll[T](data)
@@ -170,7 +161,7 @@ func diffProfiles[T any, D any](
 		return exitUsage
 	}
 
-	if !isEqual(result) {
+	if !(*result).IsEqual() {
 		return exitDiff
 	}
 
