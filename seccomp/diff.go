@@ -24,6 +24,8 @@ import (
 	"strings"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 // ProfileDiff describes the differences between two seccomp profiles.
@@ -488,17 +490,7 @@ func formatQuotedOrNone(str string) string {
 }
 
 func formatSliceDiff[T ~string](prefix string, sliceDiff *SliceDiff[T]) string {
-	items := make([]string, 0, len(sliceDiff.Removed)+len(sliceDiff.Added))
-
-	for _, removed := range sliceDiff.Removed {
-		items = append(items, "-"+string(removed))
-	}
-
-	for _, added := range sliceDiff.Added {
-		items = append(items, "+"+string(added))
-	}
-
-	return prefix + ":" + strings.Join(items, ",")
+	return merge.FormatDiffItems(prefix, sliceDiff.Removed, sliceDiff.Added)
 }
 
 func formatSyscallsDiff(syscallsDiff *SyscallsDiff) []string {

@@ -134,6 +134,94 @@ func ExampleFormatProfile() {
 	// Profile{fs:read_file /etc(read_file)}
 }
 
+func ExampleDiff() {
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessWriteFile,
+		},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+			landlock.FSAccessExecute,
+		},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathTmp,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessWriteFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	diff, err := landlock.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Equal:", diff.Equal)
+	fmt.Println(landlock.FormatDiff(diff))
+
+	// Output:
+	// Equal: false
+	// Diff{fs:-write_file,+execute -/etc(read_file) +/tmp(write_file)}
+}
+
+func ExampleFormatDiff() {
+	left := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS: []landlock.FSAccessRight{
+			landlock.FSAccessReadFile,
+		},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	diff, err := landlock.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(landlock.FormatDiff(diff))
+
+	// Output:
+	// Diff{equal}
+}
+
 func ExampleUnion() {
 	recording1 := &landlock.Profile{
 		HandledAccessFS: []landlock.FSAccessRight{

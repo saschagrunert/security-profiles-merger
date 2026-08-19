@@ -170,6 +170,68 @@ func ExampleValidateStrict() {
 	// syscall "read" in entries 0 and 1: duplicate syscall name
 }
 
+func ExampleDiff() {
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallOpen}, Action: specs.ActAllow},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Equal:", diff.Equal)
+
+	for _, r := range diff.Syscalls.Removed {
+		fmt.Println("Removed:", r.Name)
+	}
+
+	for _, a := range diff.Syscalls.Added {
+		fmt.Println("Added:", a.Name)
+	}
+
+	// Output:
+	// Equal: false
+	// Removed: write
+	// Added: open
+}
+
+func ExampleFormatDiff() {
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallOpen}, Action: specs.ActAllow},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(seccomp.FormatDiff(diff))
+
+	// Output:
+	// Diff{-write->SCMP_ACT_ALLOW +open->SCMP_ACT_ALLOW}
+}
+
 func ExampleUnion() {
 	recording1 := &specs.LinuxSeccomp{
 		DefaultAction: specs.ActErrno,

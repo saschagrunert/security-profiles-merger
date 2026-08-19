@@ -451,6 +451,51 @@ func FuzzUnion(f *testing.F) {
 	})
 }
 
+func FuzzDiff(f *testing.F) {
+	addFuzzSeeds(f)
+
+	f.Fuzz(func(
+		t *testing.T,
+		defL, act1L, act2L uint8,
+		name1L, name2L string,
+		args1L, args2L bool,
+		argVal1L, argVal2L uint64,
+		archMaskL uint32, flagMaskL uint8,
+		defR, act1R, act2R uint8,
+		name1R, name2R string,
+		args1R, args2R bool,
+		argVal1R, argVal2R uint64,
+		archMaskR uint32, flagMaskR uint8,
+	) {
+		left := fuzzProfile(
+			defL, act1L, act2L, name1L, name2L,
+			args1L, args2L, argVal1L, argVal2L,
+			archMaskL, flagMaskL,
+		)
+		right := fuzzProfile(
+			defR, act1R, act2R, name1R, name2R,
+			args1R, args2R, argVal1R, argVal2R,
+			archMaskR, flagMaskR,
+		)
+
+		diff, err := seccomp.Diff(left, right)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		seccomp.FormatDiff(diff)
+
+		selfDiff, err := seccomp.Diff(left, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !selfDiff.Equal {
+			t.Error("Diff(X, X) must be equal")
+		}
+	})
+}
+
 func FuzzValidateStrict(f *testing.F) { //nolint:funlen // fuzz seeds need many values
 	f.Add(
 		uint8(4),

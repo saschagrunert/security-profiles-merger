@@ -402,6 +402,61 @@ func TestDiffFormatAllFields(t *testing.T) {
 	}
 }
 
+func TestDiffFilesystemReadWrite(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathEtcConfig, pathVarLog},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: nil,
+			ReadWritePaths: []string{pathEtcConfig, pathTmp},
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Filesystem == nil {
+		t.Fatal("expected Filesystem diff")
+	}
+
+	if diff.Filesystem.ReadWrite == nil {
+		t.Fatal("expected ReadWrite diff")
+	}
+
+	if len(diff.Filesystem.ReadWrite.Removed) != 1 ||
+		diff.Filesystem.ReadWrite.Removed[0] != pathVarLog {
+		t.Errorf("ReadWrite removed = %v, want [%s]",
+			diff.Filesystem.ReadWrite.Removed, pathVarLog)
+	}
+
+	if len(diff.Filesystem.ReadWrite.Added) != 1 ||
+		diff.Filesystem.ReadWrite.Added[0] != pathTmp {
+		t.Errorf("ReadWrite added = %v, want [%s]",
+			diff.Filesystem.ReadWrite.Added, pathTmp)
+	}
+
+	got := apparmor.FormatDiff(diff)
+	if !strings.Contains(got, "rw:") {
+		t.Errorf("FormatDiff() = %q, missing rw:", got)
+	}
+}
+
 func TestDiffNilVsNonNilNetwork(t *testing.T) {
 	t.Parallel()
 

@@ -426,7 +426,10 @@ func TestDiffFormatComplex(t *testing.T) {
 			Path:     pathTmp,
 			AccessFS: []landlock.FSAccessRight{landlock.FSAccessWriteFile},
 		}},
-		NetRules: nil,
+		NetRules: []landlock.NetRule{{
+			Port:      443,
+			AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP},
+		}},
 	}
 
 	diff, err := landlock.Diff(left, right)
@@ -443,6 +446,7 @@ func TestDiffFormatComplex(t *testing.T) {
 		"-/etc",
 		"+/tmp",
 		"-:80",
+		"+:443",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("FormatDiff() = %q, missing %q", got, want)

@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 // ProfileDiff describes the differences between two AppArmor profiles.
@@ -344,17 +346,7 @@ func appendFSDiffs(parts []string, diff *ProfileDiff) []string {
 }
 
 func formatStringSliceDiff(prefix string, sliceDiff *StringSliceDiff) string {
-	items := make([]string, 0, len(sliceDiff.Removed)+len(sliceDiff.Added))
-
-	for _, str := range sliceDiff.Removed {
-		items = append(items, "-"+str)
-	}
-
-	for _, str := range sliceDiff.Added {
-		items = append(items, "+"+str)
-	}
-
-	return prefix + ":" + strings.Join(items, ",")
+	return merge.FormatDiffItems(prefix, sliceDiff.Removed, sliceDiff.Added)
 }
 
 func formatNetworkDiff(networkDiff *NetworkDiff) string {
