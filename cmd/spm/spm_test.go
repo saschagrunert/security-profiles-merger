@@ -194,6 +194,7 @@ func landlockJSON(t *testing.T, rights ...string) string {
 	return marshal(t, &landlock.Profile{
 		HandledAccessFS:  fsRights,
 		HandledAccessNet: nil,
+		Scoped:           nil,
 		PathRules: []landlock.PathRule{{
 			Path:     testEtcPath,
 			AccessFS: fsRights,

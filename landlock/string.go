@@ -42,6 +42,10 @@ func (p Profile) String() string {
 		parts = append(parts, "net:"+joinRights(p.HandledAccessNet))
 	}
 
+	if len(p.Scoped) > 0 {
+		parts = append(parts, "scoped:"+joinRights(p.Scoped))
+	}
+
 	for _, rule := range p.PathRules {
 		parts = append(parts, rule.String())
 	}

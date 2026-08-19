@@ -26,6 +26,11 @@ type Profile struct {
 	// ruleset. Rights not listed here are not restricted.
 	HandledAccessNet []NetAccessRight `json:"handledAccessNet,omitempty"`
 
+	// Scoped is the set of IPC scope restrictions applied to this ruleset.
+	// Scoped restrictions have no exceptions via rules; once scoped, access
+	// outside the Landlock domain is fully blocked.
+	Scoped []ScopeRight `json:"scoped,omitempty"`
+
 	// PathRules defines filesystem access rules for specific path hierarchies.
 	PathRules []PathRule `json:"pathRules,omitempty"`
 
@@ -90,6 +95,19 @@ const (
 	FSAccessResolveUnix FSAccessRight = "resolve_unix"
 )
 
+// ScopeRight represents a Landlock IPC scope restriction.
+type ScopeRight string
+
+const (
+	// ScopeAbstractUnixSocket restricts connecting to abstract UNIX domain
+	// sockets outside the Landlock domain.
+	ScopeAbstractUnixSocket ScopeRight = "abstract_unix_socket"
+
+	// ScopeSignal restricts sending signals to processes outside the
+	// Landlock domain.
+	ScopeSignal ScopeRight = "signal"
+)
+
 // NetAccessRight represents a Landlock network access right.
 type NetAccessRight string
 
@@ -103,11 +121,10 @@ const (
 	// NetAccessBindUDP allows binding a UDP socket.
 	NetAccessBindUDP NetAccessRight = "bind_udp"
 
-	// NetAccessConnectUDP allows connecting a UDP socket.
-	NetAccessConnectUDP NetAccessRight = "connect_udp"
-
-	// NetAccessSendtoUDP allows sending to a UDP socket via sendto/sendmsg.
-	NetAccessSendtoUDP NetAccessRight = "sendto_udp"
+	// NetAccessConnectSendUDP allows setting the remote port of a UDP socket
+	// via connect() or sending datagrams to a given remote port via
+	// sendto()/sendmsg().
+	NetAccessConnectSendUDP NetAccessRight = "connect_send_udp"
 )
 
 // PathRule defines the access rights allowed for a specific path hierarchy.
