@@ -358,7 +358,7 @@ func netFilterUnhandled(
 func filterBySet[T comparable](
 	items []T, exclude map[T]struct{},
 ) []T {
-	var result []T
+	result := make([]T, 0, len(items))
 
 	for _, item := range items {
 		if _, ok := exclude[item]; !ok {

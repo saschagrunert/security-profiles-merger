@@ -131,13 +131,19 @@ func validateProfiles[T any](
 		check = validateStrict
 	}
 
+	var failed bool
+
 	for idx, profile := range profiles {
 		err := check(profile)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "profile %d: %v\n", idx, err)
 
-			return 1
+			failed = true
 		}
+	}
+
+	if failed {
+		return 1
 	}
 
 	return writeValidated(profiles, formatAll(profiles, formatFn), format, stdout, stderr)

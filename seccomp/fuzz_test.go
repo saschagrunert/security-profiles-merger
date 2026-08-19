@@ -350,3 +350,26 @@ func FuzzUnion(f *testing.F) {
 		)
 	})
 }
+
+func FuzzValidateStrict(f *testing.F) {
+	f.Add(uint8(4), uint8(8), uint8(8), "read", "write", false, false, uint64(0), uint64(0))
+	f.Add(uint8(4), uint8(8), uint8(3), "read", "open", true, false, uint64(65536), uint64(0))
+	f.Add(uint8(0), uint8(7), uint8(8), "mmap", "brk", true, false, uint64(0xFFFF), uint64(0))
+	f.Add(uint8(0), uint8(5), uint8(6), "read", "write", false, false, uint64(0), uint64(0))
+
+	f.Fuzz(func(
+		_ *testing.T,
+		defIdx, act1Idx, act2Idx uint8,
+		name1, name2 string,
+		hasArgs1, hasArgs2 bool,
+		argVal1, argVal2 uint64,
+	) {
+		profile := fuzzProfile(
+			defIdx, act1Idx, act2Idx,
+			name1, name2, hasArgs1, hasArgs2,
+			argVal1, argVal2,
+		)
+
+		_ = seccomp.ValidateStrict(profile)
+	})
+}

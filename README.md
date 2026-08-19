@@ -16,7 +16,7 @@ A standalone Go library for merging security profiles
 - [Packages](#packages)
 - [Usage](#usage)
   - [CRI runtime: merge OCI-pulled profile with node baseline (intersection)](#cri-runtime-merge-oci-pulled-profile-with-node-baseline-intersection)
-  - [SPO: combine recorded profiles (union)](#spo-combine-recorded-profiles-union)
+  - [Security Profiles Operator: combine recorded profiles (union)](#security-profiles-operator-combine-recorded-profiles-union)
   - [AppArmor profile merge](#apparmor-profile-merge)
   - [Landlock profile merge](#landlock-profile-merge)
 - [CLI](#cli)
@@ -71,7 +71,7 @@ if err != nil {
 // effective permits only syscalls allowed by both profiles
 ```
 
-### SPO: combine recorded profiles (union)
+### Security Profiles Operator: combine recorded profiles (union)
 
 ```go
 combined, err := seccomp.Union(recording1, recording2, recording3)

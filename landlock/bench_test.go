@@ -61,6 +61,21 @@ func buildLandlockProfile(numPaths int) *landlock.Profile {
 	}
 }
 
+func BenchmarkLandlockValidateStrict(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		profile := buildLandlockProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				err := landlock.ValidateStrict(profile)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkLandlockIntersect(b *testing.B) {
 	for _, numPaths := range []int{10, 50, 200} {
 		left := buildLandlockProfile(numPaths)

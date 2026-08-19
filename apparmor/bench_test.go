@@ -97,6 +97,21 @@ func BenchmarkAppArmorUnion(b *testing.B) {
 	}
 }
 
+func BenchmarkAppArmorValidateStrict(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		profile := buildAppArmorProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				err := apparmor.ValidateStrict(profile)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func buildAppArmorGlobProfile(numPaths int) *apparmor.Profile {
 	readOnly := make([]string, 0, numPaths)
 	writeOnly := make([]string, 0, numPaths)
