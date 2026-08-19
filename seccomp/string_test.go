@@ -114,6 +114,29 @@ func TestFormatProfileWithValueTwo(t *testing.T) {
 	}
 }
 
+func TestFormatProfileWithNonMaskedEqualArg(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{"ioctl"},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 1, Value: 0x5401, Op: specs.OpEqualTo},
+				},
+			},
+		},
+	}
+
+	const want = "Profile{default:SCMP_ACT_ERRNO ioctl([1]SCMP_CMP_EQ:21505)->SCMP_ACT_ALLOW}"
+
+	if got := seccomp.FormatProfile(profile); got != want {
+		t.Errorf("FormatProfile() = %q, want %q", got, want)
+	}
+}
+
 func TestFormatProfileMultipleArchitectures(t *testing.T) {
 	t.Parallel()
 

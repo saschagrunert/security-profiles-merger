@@ -130,7 +130,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
   permissions use OR semantics.
 - `apparmor.Validate(profile *Profile) error` -
   Checks that no path appears in multiple filesystem categories (e.g. both
-  read-only and write-only).
+  read-only and write-only) and that capability names are known Linux
+  capabilities.
 - `apparmor.ValidateStrict(profile *Profile) error` -
   Performs all checks from Validate and additionally verifies that no path
   appears more than once in AllowedExecutables or AllowedLibraries. Use
@@ -151,6 +152,8 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 - `apparmor.ErrDuplicateCapability` - returned when the same capability appears
   more than once in AllowedCapabilities.
 - `apparmor.ErrEmptyPath` - returned when a path rule contains an empty string.
+- `apparmor.ErrUnknownCapability` - returned when a profile contains a
+  capability name not in the known set of Linux capabilities.
 - `apparmor.ErrEmptyCapability` - returned when a capability entry is an empty
   string.
 - `apparmor.ErrDuplicateExecutablePath` - returned by ValidateStrict when the
@@ -226,7 +229,7 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 - `landlock.ErrUnhandledRight` - returned by ValidateStrict when a rule grants
   an access right not listed in the handled access set.
 - `landlock.ErrDuplicateRight` - returned when the same access right appears
-  more than once in a handled set or rule.
+  more than once in a handled set, rule, or scoped set.
 
 ### Types
 
@@ -234,7 +237,7 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
   restrictions, and rules.
 - `FSAccessRight` - Filesystem access right (execute, read_file, write_file, etc.).
 - `NetAccessRight` - Network access right (bind_tcp, connect_tcp, bind_udp,
-  connect_send_udp).
+  connect_send_udp, listen_tcp, accept_tcp).
 - `ScopeRight` - IPC scope restriction (abstract_unix_socket, signal).
 - `PathRule` - Per-path filesystem access rights.
 - `NetRule` - Per-port network access rights.

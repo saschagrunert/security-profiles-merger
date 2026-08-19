@@ -75,6 +75,9 @@ func foldProfiles(profiles []*Profile, mergeOp strategy) (*Profile, error) {
 	for idx, profile := range profiles {
 		normalized[idx] = normalizeProfile(profile)
 		deduplicatePathRules(normalized[idx])
+		deduplicateNetRules(normalized[idx])
+		deduplicateScoped(normalized[idx])
+		deduplicateHandledAccess(normalized[idx])
 	}
 
 	for _, profile := range normalized {
@@ -433,6 +436,58 @@ func deduplicatePathRules(profile *Profile) {
 	}
 
 	profile.PathRules = result
+}
+
+func deduplicateHandledAccess(profile *Profile) {
+	profile.HandledAccessFS = deduplicateSlice(profile.HandledAccessFS)
+	profile.HandledAccessNet = deduplicateSlice(profile.HandledAccessNet)
+}
+
+func deduplicateSlice[T comparable](items []T) []T {
+	if len(items) == 0 {
+		return items
+	}
+
+	seen := make(map[T]struct{}, len(items))
+
+	var result []T
+
+	for _, item := range items {
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+func deduplicateNetRules(profile *Profile) {
+	if len(profile.NetRules) == 0 {
+		return
+	}
+
+	seen := make(map[uint16]int, len(profile.NetRules))
+
+	var result []NetRule
+
+	for _, rule := range profile.NetRules {
+		if idx, ok := seen[rule.Port]; ok {
+			result[idx].AccessNet = merge.UnionSlice(result[idx].AccessNet, rule.AccessNet)
+		} else {
+			seen[rule.Port] = len(result)
+			result = append(result, NetRule{
+				Port:      rule.Port,
+				AccessNet: slices.Clone(rule.AccessNet),
+			})
+		}
+	}
+
+	profile.NetRules = result
+}
+
+func deduplicateScoped(profile *Profile) {
+	profile.Scoped = deduplicateSlice(profile.Scoped)
 }
 
 func normalizeProfile(profile *Profile) *Profile {

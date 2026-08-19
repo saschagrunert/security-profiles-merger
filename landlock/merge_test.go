@@ -1414,3 +1414,74 @@ func TestIntersectNormalizedDuplicatePaths(t *testing.T) {
 		t.Errorf("expected /etc/config, got %s", result.PathRules[0].Path)
 	}
 }
+
+func TestIntersectDeduplicatesNetRules(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+			landlock.NetAccessConnectTCP,
+		},
+		Scoped:    nil,
+		PathRules: nil,
+		NetRules: []landlock.NetRule{
+			{Port: 80, AccessNet: []landlock.NetAccessRight{landlock.NetAccessBindTCP}},
+			{Port: 80, AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP}},
+		},
+	}
+
+	result, err := landlock.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.NetRules) != 1 {
+		t.Fatalf("expected 1 net rule after dedup, got %d", len(result.NetRules))
+	}
+
+	if result.NetRules[0].Port != 80 {
+		t.Errorf("expected port 80, got %d", result.NetRules[0].Port)
+	}
+
+	want := []landlock.NetAccessRight{landlock.NetAccessBindTCP, landlock.NetAccessConnectTCP}
+	slices.Sort(want)
+
+	got := slices.Clone(result.NetRules[0].AccessNet)
+	slices.Sort(got)
+
+	if !slices.Equal(got, want) {
+		t.Errorf("expected access %v, got %v", want, got)
+	}
+}
+
+func TestIntersectDeduplicatesScoped(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped: []landlock.ScopeRight{
+			landlock.ScopeSignal,
+			landlock.ScopeSignal,
+			landlock.ScopeAbstractUnixSocket,
+		},
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	result, err := landlock.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []landlock.ScopeRight{landlock.ScopeAbstractUnixSocket, landlock.ScopeSignal}
+
+	got := slices.Clone(result.Scoped)
+	slices.Sort(got)
+
+	if !slices.Equal(got, want) {
+		t.Errorf("expected scoped %v, got %v", want, got)
+	}
+}

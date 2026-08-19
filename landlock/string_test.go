@@ -26,7 +26,7 @@ func TestPathRuleString(t *testing.T) {
 	t.Parallel()
 
 	rule := landlock.PathRule{
-		Path:     "/etc",
+		Path:     pathEtc,
 		AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile, landlock.FSAccessReadDir},
 	}
 
@@ -62,7 +62,7 @@ func TestProfileString(t *testing.T) {
 		},
 		Scoped: nil,
 		PathRules: []landlock.PathRule{{
-			Path:     "/home",
+			Path:     pathHome,
 			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
 		}},
 		NetRules: []landlock.NetRule{{

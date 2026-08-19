@@ -40,11 +40,11 @@ func TestJSONRoundTripFull(t *testing.T) {
 		Scoped: nil,
 		PathRules: []landlock.PathRule{
 			{
-				Path:     "/etc",
+				Path:     pathEtc,
 				AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
 			},
 			{
-				Path: "/tmp",
+				Path: pathTmp,
 				AccessFS: []landlock.FSAccessRight{
 					landlock.FSAccessReadFile,
 					landlock.FSAccessWriteFile,
@@ -108,7 +108,7 @@ func TestJSONRoundTripFSOnly(t *testing.T) {
 		Scoped:           nil,
 		PathRules: []landlock.PathRule{
 			{
-				Path:     "/home",
+				Path:     pathHome,
 				AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
 			},
 		},

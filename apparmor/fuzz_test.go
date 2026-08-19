@@ -26,18 +26,24 @@ import (
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
 )
 
+func capsFromMask(mask uint64) []string {
+	caps := allKnownTestCaps()
+
+	var result []string
+
+	for idx, cap := range caps {
+		if mask&(1<<idx) != 0 {
+			result = append(result, cap)
+		}
+	}
+
+	return result
+}
+
 func fuzzAppArmorProfile(
-	cap1, cap2, path1, path2 string,
+	capMask uint64, path1, path2 string,
 	allowRaw, allowTCP, allowUDP bool,
 ) *apparmor.Profile {
-	if cap1 == "" {
-		cap1 = "NET_ADMIN"
-	}
-
-	if cap2 == "" {
-		cap2 = "SYS_TIME"
-	}
-
 	path1 = sanitizeFuzzPath(path1, "/etc/config")
 	path2 = sanitizeFuzzPath(path2, "/var/log")
 
@@ -45,8 +51,9 @@ func fuzzAppArmorProfile(
 		path2 = path1 + "_alt"
 	}
 
-	if cap2 == cap1 {
-		cap2 = cap1 + "_ALT"
+	caps := capsFromMask(capMask)
+	if len(caps) == 0 {
+		caps = []string{capNetAdmin}
 	}
 
 	return &apparmor.Profile{
@@ -67,7 +74,7 @@ func fuzzAppArmorProfile(
 			},
 		},
 		Capabilities: &apparmor.CapabilityRules{
-			AllowedCapabilities: []string{cap1, cap2},
+			AllowedCapabilities: caps,
 		},
 	}
 }
@@ -91,40 +98,40 @@ func sanitizeFuzzPath(fuzzPath, fallback string) string {
 func addAppArmorFuzzSeeds(f *testing.F) {
 	f.Helper()
 
-	// Identical profiles.
+	// Identical profiles: NET_ADMIN(bit12) + SYS_TIME(bit25) = 0x2001000
 	f.Add(
-		"NET_ADMIN", "SYS_TIME", "/etc/config", "/var/log", true, true, false,
-		"NET_ADMIN", "SYS_TIME", "/etc/config", "/var/log", true, true, false,
+		uint64(0x2001000), "/etc/config", "/var/log", true, true, false,
+		uint64(0x2001000), "/etc/config", "/var/log", true, true, false,
 	)
 
-	// Disjoint capabilities.
+	// Disjoint capabilities: CHOWN(bit0) + SYS_PTRACE(bit19) vs NET_ADMIN + SYS_TIME
 	f.Add(
-		"NET_ADMIN", "SYS_TIME", "/etc/config", "/var/log", true, true, false,
-		"CHOWN", "SYS_PTRACE", "/etc/config", "/var/log", false, false, true,
+		uint64(0x2001000), "/etc/config", "/var/log", true, true, false,
+		uint64(0x80001), "/etc/config", "/var/log", false, false, true,
 	)
 
-	// Overlapping paths.
+	// Overlapping paths: NET_ADMIN(bit12) + CHOWN(bit0)
 	f.Add(
-		"NET_ADMIN", "CHOWN", "/etc/config", "/tmp", true, true, true,
-		"NET_ADMIN", "CHOWN", "/tmp", "/var/log", false, true, false,
+		uint64(0x1001), "/etc/config", "/tmp", true, true, true,
+		uint64(0x1001), "/tmp", "/var/log", false, true, false,
 	)
 
-	// Nil-like sub-rules (empty strings).
+	// Single capability: NET_ADMIN(bit12) only
 	f.Add(
-		"NET_ADMIN", "NET_ADMIN", "/a", "/b", false, false, false,
-		"CHOWN", "CHOWN", "/c", "/d", true, true, true,
+		uint64(0x1000), "/a", "/b", false, false, false,
+		uint64(0x1), "/c", "/d", true, true, true,
 	)
 
-	// Only network populated, capabilities nil-like.
+	// SETUID(bit7) + SETGID(bit6)
 	f.Add(
-		"CAP_A", "CAP_A", "/x", "/y", true, false, true,
-		"CAP_B", "CAP_B", "/x", "/z", false, true, false,
+		uint64(0x80), "/x", "/y", true, false, true,
+		uint64(0x40), "/x", "/z", false, true, false,
 	)
 
-	// Glob paths for glob-aware merge coverage.
+	// Glob paths: all 41 caps set
 	f.Add(
-		"NET_ADMIN", "CHOWN", "/etc/**", "/data/*", true, true, false,
-		"NET_ADMIN", "CHOWN", "/opt/tool", "/proc/*/status", false, false, true,
+		uint64(0x1FFFFFFFFFF), "/etc/**", "/data/*", true, true, false,
+		uint64(0x1FFFFFFFFFF), "/opt/tool", "/proc/*/status", false, false, true,
 	)
 }
 
@@ -140,15 +147,15 @@ type fuzzAppArmorMergeConfig struct {
 func fuzzAppArmorMerge(
 	t *testing.T,
 	cfg fuzzAppArmorMergeConfig,
-	cap1L, cap2L, path1L, path2L string,
+	capMaskL uint64, path1L, path2L string,
 	rawL, tcpL, udpL bool,
-	cap1R, cap2R, path1R, path2R string,
+	capMaskR uint64, path1R, path2R string,
 	rawR, tcpR, udpR bool,
 ) {
 	t.Helper()
 
-	left := fuzzAppArmorProfile(cap1L, cap2L, path1L, path2L, rawL, tcpL, udpL)
-	right := fuzzAppArmorProfile(cap1R, cap2R, path1R, path2R, rawR, tcpR, udpR)
+	left := fuzzAppArmorProfile(capMaskL, path1L, path2L, rawL, tcpL, udpL)
+	right := fuzzAppArmorProfile(capMaskR, path1R, path2R, rawR, tcpR, udpR)
 
 	result, err := cfg.merge(left, right)
 	if err != nil {
@@ -161,6 +168,7 @@ func fuzzAppArmorMerge(
 
 	cfg.checkCap(t, result, left, right)
 	cfg.checkNet(t, result, left, right)
+	checkGlobSafeProperties(t, cfg, left, right, result)
 
 	// Glob subsumption rearranges paths across categories, breaking structural equality.
 	if !profileHasGlobs(left) && !profileHasGlobs(right) {
@@ -197,6 +205,45 @@ func checkStructuralProperties(
 
 	if !reflect.DeepEqual(idempotent, single) {
 		t.Error("Merge(X,X) should equal Merge(X)")
+	}
+}
+
+func checkGlobSafeProperties(
+	t *testing.T,
+	cfg fuzzAppArmorMergeConfig,
+	left, right, result *apparmor.Profile,
+) {
+	t.Helper()
+
+	commuted, err := cfg.merge(right, left)
+	if err != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(result.Capabilities, commuted.Capabilities) {
+		t.Error("capabilities not commutative")
+	}
+
+	if !reflect.DeepEqual(result.Network, commuted.Network) {
+		t.Error("network not commutative")
+	}
+
+	single, err := cfg.merge(left)
+	if err != nil {
+		return
+	}
+
+	idempotent, err := cfg.merge(left, left)
+	if err != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(single.Capabilities, idempotent.Capabilities) {
+		t.Error("capabilities not idempotent")
+	}
+
+	if !reflect.DeepEqual(single.Network, idempotent.Network) {
+		t.Error("network not idempotent")
 	}
 }
 
@@ -447,14 +494,14 @@ func FuzzAppArmorIntersect(f *testing.F) {
 
 	f.Fuzz(func(
 		t *testing.T,
-		cap1L, cap2L, path1L, path2L string,
+		capMaskL uint64, path1L, path2L string,
 		rawL, tcpL, udpL bool,
-		cap1R, cap2R, path1R, path2R string,
+		capMaskR uint64, path1R, path2R string,
 		rawR, tcpR, udpR bool,
 	) {
 		fuzzAppArmorMerge(t, cfg,
-			cap1L, cap2L, path1L, path2L, rawL, tcpL, udpL,
-			cap1R, cap2R, path1R, path2R, rawR, tcpR, udpR,
+			capMaskL, path1L, path2L, rawL, tcpL, udpL,
+			capMaskR, path1R, path2R, rawR, tcpR, udpR,
 		)
 	})
 }
@@ -471,31 +518,31 @@ func FuzzAppArmorUnion(f *testing.F) {
 
 	f.Fuzz(func(
 		t *testing.T,
-		cap1L, cap2L, path1L, path2L string,
+		capMaskL uint64, path1L, path2L string,
 		rawL, tcpL, udpL bool,
-		cap1R, cap2R, path1R, path2R string,
+		capMaskR uint64, path1R, path2R string,
 		rawR, tcpR, udpR bool,
 	) {
 		fuzzAppArmorMerge(t, cfg,
-			cap1L, cap2L, path1L, path2L, rawL, tcpL, udpL,
-			cap1R, cap2R, path1R, path2R, rawR, tcpR, udpR,
+			capMaskL, path1L, path2L, rawL, tcpL, udpL,
+			capMaskR, path1R, path2R, rawR, tcpR, udpR,
 		)
 	})
 }
 
 func FuzzAppArmorValidateStrict(f *testing.F) {
-	f.Add("NET_ADMIN", "SYS_TIME", "/etc/config", "/var/log", true, true, false)
-	f.Add("CHOWN", "SYS_PTRACE", "/etc/config", "/var/log", false, false, true)
-	f.Add("NET_ADMIN", "CHOWN", "/etc/config", "/tmp", true, true, true)
-	f.Add("CAP_A", "CAP_A", "/x", "/y", true, false, true)
+	f.Add(uint64(0x2001000), "/etc/config", "/var/log", true, true, false)
+	f.Add(uint64(0x80001), "/etc/config", "/var/log", false, false, true)
+	f.Add(uint64(0x1001), "/etc/config", "/tmp", true, true, true)
+	f.Add(uint64(0x80), "/x", "/y", true, false, true)
 
 	f.Fuzz(func(
 		_ *testing.T,
-		cap1, cap2, path1, path2 string,
+		capMask uint64, path1, path2 string,
 		allowRaw, allowTCP, allowUDP bool,
 	) {
 		profile := fuzzAppArmorProfile(
-			cap1, cap2, path1, path2,
+			capMask, path1, path2,
 			allowRaw, allowTCP, allowUDP,
 		)
 

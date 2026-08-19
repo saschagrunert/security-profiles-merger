@@ -133,7 +133,7 @@ func TestCapabilityRulesString(t *testing.T) {
 	t.Parallel()
 
 	rules := apparmor.CapabilityRules{
-		AllowedCapabilities: []string{"CHOWN", "DAC_OVERRIDE"},
+		AllowedCapabilities: []string{capChown, capDacOverride},
 	}
 
 	const want = "caps:CHOWN,DAC_OVERRIDE"
