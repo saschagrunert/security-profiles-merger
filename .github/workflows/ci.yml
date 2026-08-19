@@ -162,7 +162,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install Syft
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/05cc8ee5f43e4dff3f01cf24bc38c7af3d0fdfa5/install.sh | sh -s -- -b /usr/local/bin v1.45.1
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/2293641e3bd628a01bb37639318d62c0ebe89b39/install.sh | sh -s -- -b /usr/local/bin v1.51.0
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser

@@ -7,6 +7,8 @@ builds:
     binary: spm
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - linux
       - darwin
@@ -38,4 +40,4 @@ sboms:
   - artifacts: binary
 
 changelog:
-  sort: asc
+  use: github-native
