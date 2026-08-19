@@ -30,9 +30,13 @@ const (
 	syscallRead  = "read"
 	syscallWrite = "write"
 	syscallOpen  = "open"
+	syscallClose = "close"
 	syscallClone = "clone"
 
 	actInvalid = "SCMP_ACT_INVALID"
+
+	listenerSock = "/run/agent.sock"
+	metaA        = "meta-a"
 )
 
 func TestIntersectEmpty(t *testing.T) {

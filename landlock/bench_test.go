@@ -124,8 +124,8 @@ func BenchmarkLandlockIntersectDisjoint(b *testing.B) {
 		},
 		Scoped: nil,
 		PathRules: []landlock.PathRule{
-			{Path: "/var", AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
-			{Path: "/tmp", AccessFS: []landlock.FSAccessRight{landlock.FSAccessExecute}},
+			{Path: pathVar, AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile}},
+			{Path: pathTmp, AccessFS: []landlock.FSAccessRight{landlock.FSAccessExecute}},
 		},
 		NetRules: []landlock.NetRule{
 			{Port: 443, AccessNet: []landlock.NetAccessRight{landlock.NetAccessConnectTCP}},

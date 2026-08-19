@@ -1,0 +1,419 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package landlock
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+	"strings"
+)
+
+// ProfileDiff describes the differences between two Landlock profiles.
+type ProfileDiff struct {
+	// Equal is true when the two profiles are identical.
+	Equal bool `json:"equal"`
+
+	// HandledAccessFS is set when the handled filesystem access sets differ.
+	HandledAccessFS *RightsDiff[FSAccessRight] `json:"handledAccessFs,omitempty"`
+
+	// HandledAccessNet is set when the handled network access sets differ.
+	HandledAccessNet *RightsDiff[NetAccessRight] `json:"handledAccessNet,omitempty"`
+
+	// Scoped is set when the scope restriction sets differ.
+	Scoped *RightsDiff[ScopeRight] `json:"scoped,omitempty"`
+
+	// PathRules is set when the path rules differ.
+	PathRules *PathRulesDiff `json:"pathRules,omitempty"`
+
+	// NetRules is set when the network rules differ.
+	NetRules *NetRulesDiff `json:"netRules,omitempty"`
+}
+
+// RightsDiff represents added and removed items in a rights set.
+type RightsDiff[T comparable] struct {
+	Added   []T `json:"added,omitempty"`
+	Removed []T `json:"removed,omitempty"`
+}
+
+// PathRulesDiff describes differences in path rules.
+type PathRulesDiff struct {
+	Added   []PathRule       `json:"added,omitempty"`
+	Removed []PathRule       `json:"removed,omitempty"`
+	Changed []PathRuleChange `json:"changed,omitempty"`
+}
+
+// PathRuleChange represents a path rule present in both profiles with
+// different access rights.
+type PathRuleChange struct {
+	Path  string          `json:"path"`
+	Left  []FSAccessRight `json:"left"`
+	Right []FSAccessRight `json:"right"`
+}
+
+// NetRulesDiff describes differences in network rules.
+type NetRulesDiff struct {
+	Added   []NetRule       `json:"added,omitempty"`
+	Removed []NetRule       `json:"removed,omitempty"`
+	Changed []NetRuleChange `json:"changed,omitempty"`
+}
+
+// NetRuleChange represents a network rule present in both profiles with
+// different access rights.
+type NetRuleChange struct {
+	Port  uint16           `json:"port"`
+	Left  []NetAccessRight `json:"left"`
+	Right []NetAccessRight `json:"right"`
+}
+
+// Diff compares two Landlock profiles and returns a structured diff.
+// Returns ErrNilProfile if either profile is nil.
+func Diff(left, right *Profile) (*ProfileDiff, error) {
+	if left == nil || right == nil {
+		return nil, ErrNilProfile
+	}
+
+	diff := &ProfileDiff{
+		Equal:            true,
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	diffRightsSet(
+		diff, left.HandledAccessFS, right.HandledAccessFS,
+		func(result *RightsDiff[FSAccessRight]) { diff.HandledAccessFS = result },
+	)
+
+	diffRightsSet(
+		diff, left.HandledAccessNet, right.HandledAccessNet,
+		func(result *RightsDiff[NetAccessRight]) { diff.HandledAccessNet = result },
+	)
+
+	diffRightsSet(
+		diff, left.Scoped, right.Scoped,
+		func(result *RightsDiff[ScopeRight]) { diff.Scoped = result },
+	)
+
+	diffPathRules(diff, left.PathRules, right.PathRules)
+	diffNetRules(diff, left.NetRules, right.NetRules)
+
+	return diff, nil
+}
+
+func diffRightsSet[T cmp.Ordered](
+	diff *ProfileDiff,
+	left, right []T,
+	setter func(*RightsDiff[T]),
+) {
+	leftSet := make(map[T]struct{}, len(left))
+	for _, item := range left {
+		leftSet[item] = struct{}{}
+	}
+
+	rightSet := make(map[T]struct{}, len(right))
+	for _, item := range right {
+		rightSet[item] = struct{}{}
+	}
+
+	var added, removed []T
+
+	for item := range leftSet {
+		if _, ok := rightSet[item]; !ok {
+			removed = append(removed, item)
+		}
+	}
+
+	for item := range rightSet {
+		if _, ok := leftSet[item]; !ok {
+			added = append(added, item)
+		}
+	}
+
+	if len(added) == 0 && len(removed) == 0 {
+		return
+	}
+
+	slices.Sort(added)
+	slices.Sort(removed)
+
+	diff.Equal = false
+
+	setter(&RightsDiff[T]{Added: added, Removed: removed})
+}
+
+func diffPathRules(
+	diff *ProfileDiff, left, right []PathRule,
+) {
+	leftMap := buildPathMap(left)
+	rightMap := buildPathMap(right)
+
+	var pathDiff PathRulesDiff
+
+	leftPaths := sortedPathKeys(leftMap)
+
+	for _, path := range leftPaths {
+		if _, ok := rightMap[path]; !ok {
+			pathDiff.Removed = append(pathDiff.Removed, leftMap[path])
+		}
+	}
+
+	for _, path := range sortedPathKeys(rightMap) {
+		if _, ok := leftMap[path]; !ok {
+			pathDiff.Added = append(pathDiff.Added, rightMap[path])
+		}
+	}
+
+	collectPathChanges(&pathDiff, leftPaths, leftMap, rightMap)
+
+	if len(pathDiff.Added) > 0 ||
+		len(pathDiff.Removed) > 0 ||
+		len(pathDiff.Changed) > 0 {
+		diff.Equal = false
+		diff.PathRules = &pathDiff
+	}
+}
+
+func buildPathMap(rules []PathRule) map[string]PathRule {
+	result := make(map[string]PathRule, len(rules))
+	for _, rule := range rules {
+		result[rule.Path] = rule
+	}
+
+	return result
+}
+
+func sortedPathKeys(m map[string]PathRule) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	return keys
+}
+
+func collectPathChanges(
+	pathDiff *PathRulesDiff, paths []string,
+	leftMap, rightMap map[string]PathRule,
+) {
+	for _, path := range paths {
+		leftRule := leftMap[path]
+
+		rightRule, ok := rightMap[path]
+		if !ok {
+			continue
+		}
+
+		if !slices.Equal(
+			sortedRights(leftRule.AccessFS),
+			sortedRights(rightRule.AccessFS),
+		) {
+			pathDiff.Changed = append(pathDiff.Changed, PathRuleChange{
+				Path:  path,
+				Left:  leftRule.AccessFS,
+				Right: rightRule.AccessFS,
+			})
+		}
+	}
+}
+
+func diffNetRules(
+	diff *ProfileDiff, left, right []NetRule,
+) {
+	leftMap := buildNetMap(left)
+	rightMap := buildNetMap(right)
+
+	var netDiff NetRulesDiff
+
+	leftPorts := sortedPortKeys(leftMap)
+
+	for _, port := range leftPorts {
+		if _, ok := rightMap[port]; !ok {
+			netDiff.Removed = append(netDiff.Removed, leftMap[port])
+		}
+	}
+
+	for _, port := range sortedPortKeys(rightMap) {
+		if _, ok := leftMap[port]; !ok {
+			netDiff.Added = append(netDiff.Added, rightMap[port])
+		}
+	}
+
+	collectNetChanges(&netDiff, leftPorts, leftMap, rightMap)
+
+	if len(netDiff.Added) > 0 ||
+		len(netDiff.Removed) > 0 ||
+		len(netDiff.Changed) > 0 {
+		diff.Equal = false
+		diff.NetRules = &netDiff
+	}
+}
+
+func buildNetMap(rules []NetRule) map[uint16]NetRule {
+	result := make(map[uint16]NetRule, len(rules))
+	for _, rule := range rules {
+		result[rule.Port] = rule
+	}
+
+	return result
+}
+
+func sortedPortKeys(m map[uint16]NetRule) []uint16 {
+	keys := make([]uint16, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	return keys
+}
+
+func collectNetChanges(
+	netDiff *NetRulesDiff, ports []uint16,
+	leftMap, rightMap map[uint16]NetRule,
+) {
+	for _, port := range ports {
+		leftRule := leftMap[port]
+
+		rightRule, ok := rightMap[port]
+		if !ok {
+			continue
+		}
+
+		if !slices.Equal(
+			sortedRights(leftRule.AccessNet),
+			sortedRights(rightRule.AccessNet),
+		) {
+			netDiff.Changed = append(netDiff.Changed, NetRuleChange{
+				Port:  port,
+				Left:  leftRule.AccessNet,
+				Right: rightRule.AccessNet,
+			})
+		}
+	}
+}
+
+func sortedRights[T ~string](rights []T) []T {
+	sorted := slices.Clone(rights)
+	slices.Sort(sorted)
+
+	return sorted
+}
+
+// FormatDiff returns a human-readable representation of a Landlock profile diff.
+func FormatDiff(diff *ProfileDiff) string {
+	if diff == nil {
+		return "Diff{<nil>}"
+	}
+
+	if diff.Equal {
+		return "Diff{equal}"
+	}
+
+	var parts []string
+
+	if diff.HandledAccessFS != nil {
+		parts = append(parts, formatRightsDiff("fs", diff.HandledAccessFS))
+	}
+
+	if diff.HandledAccessNet != nil {
+		parts = append(parts, formatRightsDiff("net", diff.HandledAccessNet))
+	}
+
+	if diff.Scoped != nil {
+		parts = append(parts, formatRightsDiff("scoped", diff.Scoped))
+	}
+
+	if diff.PathRules != nil {
+		parts = append(parts, formatPathRulesDiff(diff.PathRules)...)
+	}
+
+	if diff.NetRules != nil {
+		parts = append(parts, formatNetRulesDiff(diff.NetRules)...)
+	}
+
+	return fmt.Sprintf("Diff{%s}", strings.Join(parts, " "))
+}
+
+func formatRightsDiff[T ~string](prefix string, rightsDiff *RightsDiff[T]) string {
+	items := make([]string, 0, len(rightsDiff.Removed)+len(rightsDiff.Added))
+
+	for _, removed := range rightsDiff.Removed {
+		items = append(items, "-"+string(removed))
+	}
+
+	for _, added := range rightsDiff.Added {
+		items = append(items, "+"+string(added))
+	}
+
+	return prefix + ":" + strings.Join(items, ",")
+}
+
+func formatPathRulesDiff(pathRulesDiff *PathRulesDiff) []string {
+	parts := make([]string, 0,
+		len(pathRulesDiff.Removed)+len(pathRulesDiff.Added)+len(pathRulesDiff.Changed),
+	)
+
+	for _, rule := range pathRulesDiff.Removed {
+		parts = append(parts, "-"+rule.String())
+	}
+
+	for _, rule := range pathRulesDiff.Added {
+		parts = append(parts, "+"+rule.String())
+	}
+
+	for _, change := range pathRulesDiff.Changed {
+		parts = append(parts, fmt.Sprintf(
+			"~%s:[%s]->[%s]",
+			change.Path,
+			joinRights(change.Left),
+			joinRights(change.Right),
+		))
+	}
+
+	return parts
+}
+
+func formatNetRulesDiff(netRulesDiff *NetRulesDiff) []string {
+	parts := make([]string, 0,
+		len(netRulesDiff.Removed)+len(netRulesDiff.Added)+len(netRulesDiff.Changed),
+	)
+
+	for _, rule := range netRulesDiff.Removed {
+		parts = append(parts, "-"+rule.String())
+	}
+
+	for _, rule := range netRulesDiff.Added {
+		parts = append(parts, "+"+rule.String())
+	}
+
+	for _, change := range netRulesDiff.Changed {
+		parts = append(parts, fmt.Sprintf(
+			"~:%d:[%s]->[%s]",
+			change.Port,
+			joinRights(change.Left),
+			joinRights(change.Right),
+		))
+	}
+
+	return parts
+}

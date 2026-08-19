@@ -30,6 +30,7 @@ const (
 
 	cmdMerge    = "merge"
 	cmdValidate = "validate"
+	cmdDiff     = "diff"
 
 	flagHelp = "--help"
 
@@ -49,6 +50,7 @@ const usage = `Usage: spm <command> [options] [files...]
 Commands:
   merge      Merge two or more security profiles
   validate   Validate one or more security profiles
+  diff       Compare two security profiles
 
 Run 'spm <command> --help' for details on each command.
 `
@@ -69,6 +71,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runMerge(args[1:], stdin, stdout, stderr)
 	case cmdValidate:
 		return runValidate(args[1:], stdin, stdout, stderr)
+	case cmdDiff:
+		return runDiff(args[1:], stdin, stdout, stderr)
 	case "version", "--version", "-v":
 		_, _ = fmt.Fprintf(stdout, "spm %s\n", version)
 
