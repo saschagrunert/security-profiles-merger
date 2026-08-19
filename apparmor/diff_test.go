@@ -1,0 +1,438 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package apparmor_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/saschagrunert/security-profiles-merger/apparmor"
+)
+
+func TestDiffNil(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable:   nil,
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	_, err := apparmor.Diff(nil, profile)
+	if err == nil {
+		t.Fatal("expected error for nil left profile")
+	}
+
+	_, err = apparmor.Diff(profile, nil)
+	if err == nil {
+		t.Fatal("expected error for nil right profile")
+	}
+
+	_, err = apparmor.Diff(nil, nil)
+	if err == nil {
+		t.Fatal("expected error for nil-nil profiles")
+	}
+}
+
+func TestDiffEqual(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinBash},
+			AllowedLibraries:   []string{pathLibC},
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network: nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	diff, err := apparmor.Diff(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles")
+	}
+
+	const want = "Diff{equal}"
+	if got := apparmor.FormatDiff(diff); got != want {
+		t.Errorf("FormatDiff() = %q, want %q", got, want)
+	}
+}
+
+func TestDiffCapabilities(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capSysTime},
+		},
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capChown},
+		},
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Capabilities == nil {
+		t.Fatal("expected Capabilities diff")
+	}
+
+	if len(diff.Capabilities.Removed) != 1 || diff.Capabilities.Removed[0] != capSysTime {
+		t.Errorf("removed = %v, want [SYS_TIME]", diff.Capabilities.Removed)
+	}
+
+	if len(diff.Capabilities.Added) != 1 || diff.Capabilities.Added[0] != capChown {
+		t.Errorf("added = %v, want [CHOWN]", diff.Capabilities.Added)
+	}
+}
+
+func TestDiffFilesystem(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig, pathVarLog},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: []string{pathTmp},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Filesystem == nil {
+		t.Fatal("expected Filesystem diff")
+	}
+
+	if diff.Filesystem.ReadOnly == nil {
+		t.Fatal("expected ReadOnly diff")
+	}
+
+	if len(diff.Filesystem.ReadOnly.Removed) != 1 {
+		t.Errorf("ReadOnly removed = %v, want 1", diff.Filesystem.ReadOnly.Removed)
+	}
+
+	if diff.Filesystem.WriteOnly == nil {
+		t.Fatal("expected WriteOnly diff")
+	}
+
+	if len(diff.Filesystem.WriteOnly.Added) != 1 {
+		t.Errorf("WriteOnly added = %v, want 1", diff.Filesystem.WriteOnly.Added)
+	}
+}
+
+func TestDiffNetwork(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+	falseVal := false
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: &trueVal,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: &trueVal,
+				AllowUDP: &falseVal,
+			},
+		},
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: &falseVal,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: &trueVal,
+				AllowUDP: &trueVal,
+			},
+		},
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Network == nil {
+		t.Fatal("expected Network diff")
+	}
+
+	if diff.Network.AllowRaw == nil {
+		t.Error("expected AllowRaw diff")
+	}
+
+	if diff.Network.AllowTCP != nil {
+		t.Error("AllowTCP should be nil (unchanged)")
+	}
+
+	if diff.Network.AllowUDP == nil {
+		t.Error("expected AllowUDP diff")
+	}
+}
+
+func TestDiffExecutables(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinBash, pathBinPython},
+			AllowedLibraries:   []string{pathLibC},
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: []string{pathBinBash},
+			AllowedLibraries:   []string{pathLibC, pathLibM},
+		},
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Executables == nil {
+		t.Fatal("expected Executables diff")
+	}
+
+	if len(diff.Executables.Removed) != 1 {
+		t.Errorf("removed executables = %v, want 1", diff.Executables.Removed)
+	}
+
+	if diff.Libraries == nil {
+		t.Fatal("expected Libraries diff")
+	}
+
+	if len(diff.Libraries.Added) != 1 {
+		t.Errorf("added libraries = %v, want 1", diff.Libraries.Added)
+	}
+}
+
+func TestDiffFormatNil(t *testing.T) {
+	t.Parallel()
+
+	const want = "Diff{<nil>}"
+	if got := apparmor.FormatDiff(nil); got != want {
+		t.Errorf("FormatDiff(nil) = %q, want %q", got, want)
+	}
+}
+
+func TestDiffFormatComplex(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+	falseVal := false
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathEtcConfig},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: &trueVal,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: &falseVal,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{pathVarLog},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: &falseVal,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: &falseVal,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capChown},
+		},
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := apparmor.FormatDiff(diff)
+
+	for _, want := range []string{
+		"-" + pathEtcConfig,
+		"+" + pathVarLog,
+		"raw:true->false",
+		"-" + capNetAdmin,
+		"+" + capChown,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("FormatDiff() = %q, missing %q", got, want)
+		}
+	}
+}
+
+func fullDiffProfile(
+	execs, libs, roPaths, woPaths, rwPaths []string,
+	raw, tcp, udp *bool, caps []string,
+) *apparmor.Profile {
+	return &apparmor.Profile{
+		Executable: &apparmor.ExecutableRules{
+			AllowedExecutables: execs,
+			AllowedLibraries:   libs,
+		},
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  roPaths,
+			WriteOnlyPaths: woPaths,
+			ReadWritePaths: rwPaths,
+		},
+		Network: &apparmor.NetworkRules{
+			AllowRaw: raw,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: tcp,
+				AllowUDP: udp,
+			},
+		},
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: caps,
+		},
+	}
+}
+
+func TestDiffFormatAllFields(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+	falseVal := false
+
+	left := fullDiffProfile(
+		[]string{pathBinBash}, []string{pathLibC},
+		[]string{pathEtcConfig}, []string{pathVarLog}, []string{pathTmp},
+		&trueVal, &trueVal, &falseVal, []string{capNetAdmin},
+	)
+	right := fullDiffProfile(
+		[]string{pathBinPython}, []string{pathLibM},
+		nil, nil, nil,
+		&falseVal, &falseVal, &trueVal, []string{capChown},
+	)
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := apparmor.FormatDiff(diff)
+
+	for _, want := range []string{
+		"exec:", "lib:", "r:", "w:", "rw:",
+		"tcp:true->false", "udp:false->true", "raw:true->false",
+		"caps:",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("FormatDiff() = %q, missing %q", got, want)
+		}
+	}
+}
+
+func TestDiffNilVsNonNilNetwork(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+
+	left := &apparmor.Profile{
+		Executable:   nil,
+		Filesystem:   nil,
+		Network:      nil,
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw:  &trueVal,
+			Protocols: nil,
+		},
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Network == nil {
+		t.Fatal("expected Network diff for nil vs non-nil")
+	}
+
+	if diff.Network.AllowRaw == nil {
+		t.Error("expected AllowRaw diff")
+	}
+}

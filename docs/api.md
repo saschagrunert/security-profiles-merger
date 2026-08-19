@@ -64,6 +64,14 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
   ValidateStrict for user-authored profiles.
 - `seccomp.FormatProfile(profile *specs.LinuxSeccomp) string` -
   Returns a human-readable representation of a seccomp profile.
+- `seccomp.Diff(left, right *specs.LinuxSeccomp) (*ProfileDiff, error)` -
+  Compares two profiles and returns a structured diff describing differences
+  in default action, default errno return, architectures, flags, listener
+  path, listener metadata, and syscalls. Multi-name entries are normalized
+  per name, and multiple rules for the same syscall (with different argument
+  filters) are correctly grouped and compared.
+- `seccomp.FormatDiff(diff *ProfileDiff) string` -
+  Returns a human-readable representation of a seccomp profile diff.
 
 ### Errors
 
@@ -140,6 +148,12 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
   Returns a human-readable representation of an AppArmor profile.
 - `apparmor.IsGlobPattern(path string) bool` -
   Reports whether the path contains AppArmor glob tokens.
+- `apparmor.Diff(left, right *Profile) (*ProfileDiff, error)` -
+  Compares two profiles and returns a structured diff describing differences
+  in executables, libraries, filesystem paths, network permissions, and
+  capabilities.
+- `apparmor.FormatDiff(diff *ProfileDiff) string` -
+  Returns a human-readable representation of an AppArmor profile diff.
 
 ### Errors
 
@@ -216,6 +230,11 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
   Validate for merge inputs and ValidateStrict for user-authored profiles.
 - `landlock.FormatProfile(profile *Profile) string` -
   Returns a human-readable representation of a Landlock profile.
+- `landlock.Diff(left, right *Profile) (*ProfileDiff, error)` -
+  Compares two profiles and returns a structured diff describing differences
+  in handled access sets, scope restrictions, path rules, and network rules.
+- `landlock.FormatDiff(diff *ProfileDiff) string` -
+  Returns a human-readable representation of a Landlock profile diff.
 
 ### Errors
 
