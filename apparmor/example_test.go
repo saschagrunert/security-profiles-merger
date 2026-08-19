@@ -122,6 +122,79 @@ func ExampleFormatProfile() {
 	// Profile{caps:NET_ADMIN}
 }
 
+func ExampleDiff() {
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capSysTime},
+		},
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capChown},
+		},
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Equal:", diff.Equal)
+	fmt.Println("Removed:", diff.Capabilities.Removed)
+	fmt.Println("Added:", diff.Capabilities.Added)
+
+	// Output:
+	// Equal: false
+	// Removed: [SYS_TIME]
+	// Added: [CHOWN]
+}
+
+func ExampleFormatDiff() {
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capSysTime},
+		},
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capChown},
+		},
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(apparmor.FormatDiff(diff))
+
+	// Output:
+	// Diff{caps:-SYS_TIME,+CHOWN}
+}
+
+func ExampleIsGlobPattern() {
+	fmt.Println(apparmor.IsGlobPattern("/usr/lib/**"))
+	fmt.Println(apparmor.IsGlobPattern("/usr/bin/bash"))
+
+	// Output:
+	// true
+	// false
+}
+
 func ExampleUnion() {
 	recording1 := &apparmor.Profile{
 		Executable: nil,

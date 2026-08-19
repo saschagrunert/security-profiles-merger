@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 var (
@@ -64,6 +65,21 @@ func Fold[T any](
 	}
 
 	return result, nil
+}
+
+// FormatDiffItems formats added and removed items as a prefixed diff string.
+func FormatDiffItems[T ~string](prefix string, removed, added []T) string {
+	items := make([]string, 0, len(removed)+len(added))
+
+	for _, r := range removed {
+		items = append(items, "-"+string(r))
+	}
+
+	for _, a := range added {
+		items = append(items, "+"+string(a))
+	}
+
+	return prefix + ":" + strings.Join(items, ",")
 }
 
 const smallSliceThreshold = 16

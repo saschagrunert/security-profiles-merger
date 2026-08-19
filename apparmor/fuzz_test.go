@@ -530,6 +530,37 @@ func FuzzAppArmorUnion(f *testing.F) {
 	})
 }
 
+func FuzzAppArmorDiff(f *testing.F) {
+	addAppArmorFuzzSeeds(f)
+
+	f.Fuzz(func(
+		t *testing.T,
+		capMaskL uint64, path1L, path2L string,
+		rawL, tcpL, udpL bool,
+		capMaskR uint64, path1R, path2R string,
+		rawR, tcpR, udpR bool,
+	) {
+		left := fuzzAppArmorProfile(capMaskL, path1L, path2L, rawL, tcpL, udpL)
+		right := fuzzAppArmorProfile(capMaskR, path1R, path2R, rawR, tcpR, udpR)
+
+		diff, err := apparmor.Diff(left, right)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		apparmor.FormatDiff(diff)
+
+		selfDiff, err := apparmor.Diff(left, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !selfDiff.Equal {
+			t.Error("Diff(X, X) must be equal")
+		}
+	})
+}
+
 func FuzzAppArmorValidateStrict(f *testing.F) {
 	f.Add(uint64(0x2001000), "/etc/config", "/var/log", true, true, false)
 	f.Add(uint64(0x80001), "/etc/config", "/var/log", false, false, true)

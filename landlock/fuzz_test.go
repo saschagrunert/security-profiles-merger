@@ -999,6 +999,49 @@ func FuzzLandlockUnion(f *testing.F) {
 	})
 }
 
+func FuzzLandlockDiff(f *testing.F) {
+	addLandlockFuzzSeeds(f)
+
+	f.Fuzz(func(
+		t *testing.T,
+		hfsL uint32, hnetL uint8, scopeL uint8,
+		p1L, p2L string,
+		am1L, am2L uint32,
+		port1L, port2L uint16,
+		nm1L, nm2L uint8,
+		hfsR uint32, hnetR uint8, scopeR uint8,
+		p1R, p2R string,
+		am1R, am2R uint32,
+		port1R, port2R uint16,
+		nm1R, nm2R uint8,
+	) {
+		left := fuzzLandlockProfile(
+			hfsL, hnetL, scopeL, p1L, p2L,
+			am1L, am2L, port1L, port2L, nm1L, nm2L,
+		)
+		right := fuzzLandlockProfile(
+			hfsR, hnetR, scopeR, p1R, p2R,
+			am1R, am2R, port1R, port2R, nm1R, nm2R,
+		)
+
+		diff, err := landlock.Diff(left, right)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		landlock.FormatDiff(diff)
+
+		selfDiff, err := landlock.Diff(left, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !selfDiff.Equal {
+			t.Error("Diff(X, X) must be equal")
+		}
+	})
+}
+
 func FuzzLandlockValidateStrict(f *testing.F) {
 	f.Add(
 		uint32(0x07), uint8(0x03), uint8(0x03), "/etc", "/home",

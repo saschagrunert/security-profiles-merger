@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 // ProfileDiff describes the differences between two Landlock profiles.
@@ -355,17 +357,7 @@ func FormatDiff(diff *ProfileDiff) string {
 }
 
 func formatRightsDiff[T ~string](prefix string, rightsDiff *RightsDiff[T]) string {
-	items := make([]string, 0, len(rightsDiff.Removed)+len(rightsDiff.Added))
-
-	for _, removed := range rightsDiff.Removed {
-		items = append(items, "-"+string(removed))
-	}
-
-	for _, added := range rightsDiff.Added {
-		items = append(items, "+"+string(added))
-	}
-
-	return prefix + ":" + strings.Join(items, ",")
+	return merge.FormatDiffItems(prefix, rightsDiff.Removed, rightsDiff.Added)
 }
 
 func formatPathRulesDiff(pathRulesDiff *PathRulesDiff) []string {

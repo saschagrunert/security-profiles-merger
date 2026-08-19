@@ -23,13 +23,14 @@ A standalone Go library for merging security profiles
   - [Install](#install)
   - [Merge profiles](#merge-profiles)
   - [Validate profiles](#validate-profiles)
+  - [Diff profiles](#diff-profiles)
 - [Community, discussion, contribution, and support](#community-discussion-contribution-and-support)
   - [Code of Conduct](#code-of-conduct)
 <!-- /toc -->
 
 ## Overview
 
-This library provides two core operations on security profiles:
+This library provides core operations on security profiles:
 
 - **Intersect**: Produces an effective profile that permits an operation only if
   all input profiles permit it. Used by CRI runtimes (CRI-O, containerd) to
@@ -39,6 +40,8 @@ This library provides two core operations on security profiles:
   permits it. Used by the
   [Security Profiles Operator](https://github.com/kubernetes-sigs/security-profiles-operator)
   to merge recorded profiles.
+- **Diff**: Compares two profiles and returns a structured diff describing what
+  changed between them.
 
 ## Installation
 
@@ -48,9 +51,9 @@ go get github.com/saschagrunert/security-profiles-merger
 
 ## Packages
 
-Each package provides `Intersect`, `Union`, `Validate`, `ValidateStrict`, and
-`FormatProfile` functions. For the full API reference (functions, errors, types,
-and merge semantics), see [docs/api.md](docs/api.md).
+Each package provides `Intersect`, `Union`, `Validate`, `ValidateStrict`,
+`FormatProfile`, `Diff`, and `FormatDiff` functions. For the full API reference
+(functions, errors, types, and merge semantics), see [docs/api.md](docs/api.md).
 
 - **[seccomp](docs/api.md#seccomp)** - Operates on `specs.LinuxSeccomp` from the
   [OCI runtime-spec](https://github.com/opencontainers/runtime-spec).
@@ -183,6 +186,21 @@ spm validate --type seccomp --format human profile.json
 Validation outputs the profile on success (exit 0) or prints errors to
 stderr on failure (exit 1). Use `--strict` for stricter checks intended
 for user-authored profiles.
+
+### Diff profiles
+
+```sh
+spm diff --type seccomp left.json right.json
+spm diff --type apparmor --format human left.json right.json
+```
+
+Profiles can also be read from stdin as a JSON array:
+
+```sh
+cat profiles.json | spm diff --type landlock
+```
+
+Exits 0 if profiles are equal, 1 if they differ, or 2 on usage error.
 
 ## Community, discussion, contribution, and support
 

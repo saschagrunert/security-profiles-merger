@@ -142,6 +142,66 @@ func BenchmarkLandlockIntersectDisjoint(b *testing.B) {
 	}
 }
 
+func BenchmarkLandlockDiff(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		left := buildLandlockProfile(numPaths)
+		right := buildLandlockProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				result, err := landlock.Diff(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}
+
+func BenchmarkLandlockFormatDiff(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		left := buildLandlockProfile(numPaths)
+
+		right := &landlock.Profile{
+			HandledAccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessExecute,
+			},
+			HandledAccessNet: []landlock.NetAccessRight{
+				landlock.NetAccessConnectTCP,
+			},
+			Scoped:    nil,
+			PathRules: nil,
+			NetRules:  nil,
+		}
+
+		diff, err := landlock.Diff(left, right)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				_ = landlock.FormatDiff(diff)
+			}
+		})
+	}
+}
+
+func BenchmarkLandlockFormatProfile(b *testing.B) {
+	for _, numPaths := range []int{10, 50, 200} {
+		profile := buildLandlockProfile(numPaths)
+
+		b.Run(fmt.Sprintf("paths=%d", numPaths), func(b *testing.B) {
+			for range b.N {
+				_ = landlock.FormatProfile(profile)
+			}
+		})
+	}
+}
+
 func BenchmarkLandlockUnion(b *testing.B) {
 	for _, numPaths := range []int{10, 50, 200} {
 		left := buildLandlockProfile(numPaths)

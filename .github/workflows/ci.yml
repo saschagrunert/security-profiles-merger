@@ -46,40 +46,52 @@ jobs:
           files: build/coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  fuzz:
+  fuzz-prepare:
+    name: fuzz / prepare
     runs-on: ubuntu-latest
-    name: fuzz / ${{ matrix.name }}
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: find
+        run: |
+          tmp=$(mktemp)
+          grep -rn '^func Fuzz' --include='*_test.go' . \
+            | sed 's|^\./||' \
+            | while IFS=: read -r file _ line; do
+                fn=$(echo "$line" | grep -oP 'Fuzz\w+')
+                dir=$(dirname "$file")
+                echo "$dir $fn"
+              done > "$tmp"
+          matrix=$(cat "$tmp" | while read -r dir fn; do
+            count=$(grep -c "^$dir " "$tmp")
+            pkg="./$dir/"
+            leaf=$(basename "$dir")
+            if [ "$count" -eq 1 ]; then
+              name="$leaf"
+            else
+              suffix=$(echo "$fn" | sed 's/^Fuzz//' \
+                | sed 's/\([a-z]\)\([A-Z]\)/\1-\2/g' \
+                | tr '[:upper:]' '[:lower:]')
+              norm=$(echo "$suffix" | tr -d '-')
+              suffix=$(echo "$norm" | sed "s/^${leaf}//")
+              name="$leaf-$suffix"
+            fi
+            echo "{\"name\":\"$name\",\"package\":\"$pkg\",\"target\":\"$fn\"}"
+          done | jq -s -c '.')
+          rm -f "$tmp"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    name: fuzz / ${{ matrix.fuzz.name }}
+    needs: [fuzz-prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: seccomp / intersect
-            package: ./seccomp/
-            target: FuzzIntersect
-          - name: seccomp / union
-            package: ./seccomp/
-            target: FuzzUnion
-          - name: apparmor / intersect
-            package: ./apparmor/
-            target: FuzzAppArmorIntersect
-          - name: apparmor / union
-            package: ./apparmor/
-            target: FuzzAppArmorUnion
-          - name: landlock / intersect
-            package: ./landlock/
-            target: FuzzLandlockIntersect
-          - name: landlock / union
-            package: ./landlock/
-            target: FuzzLandlockUnion
-          - name: seccomp / validate-strict
-            package: ./seccomp/
-            target: FuzzValidateStrict
-          - name: apparmor / validate-strict
-            package: ./apparmor/
-            target: FuzzAppArmorValidateStrict
-          - name: landlock / validate-strict
-            package: ./landlock/
-            target: FuzzLandlockValidateStrict
+        fuzz: ${{ fromJSON(needs.fuzz-prepare.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -87,10 +99,10 @@ jobs:
           go-version-file: go.mod
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ matrix.package }}testdata/fuzz
-          key: fuzz-${{ matrix.name }}-${{ github.sha }}
-          restore-keys: fuzz-${{ matrix.name }}-
-      - run: go test -fuzz=${{ matrix.target }} -fuzztime=30s ${{ matrix.package }}
+          path: ${{ matrix.fuzz.package }}testdata/fuzz
+          key: fuzz-${{ matrix.fuzz.name }}-${{ github.sha }}
+          restore-keys: fuzz-${{ matrix.fuzz.name }}-
+      - run: go test -fuzz=${{ matrix.fuzz.target }} -fuzztime=30s ${{ matrix.fuzz.package }}
 
   benchmark:
     runs-on: ubuntu-latest

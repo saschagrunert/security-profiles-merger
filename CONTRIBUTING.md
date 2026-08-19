@@ -22,6 +22,18 @@ We have full documentation on how to get started contributing here:
 - [Contributor Cheat Sheet](https://k8s.dev/cheatsheet) - Common resources for
   existing developers
 
+## Local Development
+
+```sh
+make build          # build the spm binary (static)
+make test           # run tests with race detection and coverage
+make lint           # run golangci-lint
+make fuzz           # run all fuzz tests (default 30s, set FUZZTIME to adjust)
+make bench          # run benchmarks
+make verify-tidy    # verify go.mod is tidy
+make govulncheck    # run govulncheck
+```
+
 ## Mentorship
 
 - [Mentoring Initiatives](https://k8s.dev/community/mentoring) - We have a

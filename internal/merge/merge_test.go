@@ -323,3 +323,55 @@ func TestFoldMergeErrorSubsequentPair(t *testing.T) {
 		t.Fatalf("expected errMergeFailed, got %v", err)
 	}
 }
+
+func TestFormatDiffItems(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		prefix  string
+		removed []string
+		added   []string
+		want    string
+	}{
+		{
+			name:    "both added and removed",
+			prefix:  "caps",
+			removed: []string{"NET_ADMIN"},
+			added:   []string{"CHOWN"},
+			want:    "caps:-NET_ADMIN,+CHOWN",
+		},
+		{
+			name:    "removed only",
+			prefix:  "fs",
+			removed: []string{"read_file"},
+			added:   nil,
+			want:    "fs:-read_file",
+		},
+		{
+			name:    "added only",
+			prefix:  "net",
+			removed: nil,
+			added:   []string{"bind_tcp"},
+			want:    "net:+bind_tcp",
+		},
+		{
+			name:    "empty",
+			prefix:  "x",
+			removed: nil,
+			added:   nil,
+			want:    "x:",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := merge.FormatDiffItems(test.prefix, test.removed, test.added)
+			if got != test.want {
+				t.Errorf("FormatDiffItems() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

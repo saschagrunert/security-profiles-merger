@@ -170,6 +170,54 @@ func BenchmarkValidateStrict(b *testing.B) {
 	}
 }
 
+func BenchmarkDiff(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfile(numSyscalls)
+		right := buildProfile(numSyscalls)
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				result, err := seccomp.Diff(left, right)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				_ = result
+			}
+		})
+	}
+}
+
+func BenchmarkFormatDiff(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfile(numSyscalls)
+		right := buildProfileWithArgs(numSyscalls)
+
+		diff, err := seccomp.Diff(left, right)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				_ = seccomp.FormatDiff(diff)
+			}
+		})
+	}
+}
+
+func BenchmarkFormatProfile(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		profile := buildProfile(numSyscalls)
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				_ = seccomp.FormatProfile(profile)
+			}
+		})
+	}
+}
+
 func BenchmarkIntersectDisjoint(b *testing.B) {
 	for _, numSyscalls := range []int{10, 50, 200} {
 		left := buildProfile(numSyscalls)
