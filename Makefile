@@ -2,6 +2,7 @@ GO ?= go
 FUZZTIME ?= 30s
 
 GOLANGCI_LINT_VERSION = 2.12.2
+MDTOC_VERSION = v1.4.0
 ZEITGEIST_VERSION = v0.8.0
 
 BUILD_DIR := build
@@ -78,6 +79,13 @@ lint: $(GOLANGCI_LINT) ## Run golangci-lint
 $(GOLANGCI_LINT):
 	@mkdir -p $(BUILD_DIR)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(BUILD_DIR) v$(GOLANGCI_LINT_VERSION)
+
+MDOCS := README.md docs/api.md
+
+.PHONY: verify-mdtoc
+verify-mdtoc: ## Verify table of contents in markdown files
+	$(GO) run sigs.k8s.io/mdtoc@$(MDTOC_VERSION) --inplace $(MDOCS)
+	git diff --exit-code $(MDOCS)
 
 .PHONY: verify-dependencies
 verify-dependencies: $(ZEITGEIST) ## Verify external dependencies

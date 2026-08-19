@@ -15,6 +15,12 @@ dependencies:
       - path: .github/workflows/release.yml
         match: "syft/"
 
+  - name: mdtoc
+    version: 1.4.0
+    refPaths:
+      - path: Makefile
+        match: ^MDTOC_VERSION
+
   - name: zeitgeist
     version: 0.8.0
     refPaths:
