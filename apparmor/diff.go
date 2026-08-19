@@ -18,7 +18,6 @@ package apparmor
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
@@ -44,6 +43,9 @@ type ProfileDiff struct {
 	// Capabilities is set when the capabilities differ.
 	Capabilities *StringSliceDiff `json:"capabilities,omitempty"`
 }
+
+// IsEqual returns whether the two compared profiles are identical.
+func (d ProfileDiff) IsEqual() bool { return d.Equal }
 
 // StringSliceDiff represents added and removed items in a string slice.
 type StringSliceDiff struct {
@@ -72,6 +74,7 @@ type BoolPtrDiff struct {
 }
 
 // Diff compares two AppArmor profiles and returns a structured diff.
+// Unlike Intersect and Union, Diff does not validate profiles before comparing.
 // Returns ErrNilProfile if either profile is nil.
 func Diff(left, right *Profile) (*ProfileDiff, error) {
 	if left == nil || right == nil {
@@ -96,18 +99,12 @@ func Diff(left, right *Profile) (*ProfileDiff, error) {
 }
 
 func diffExecutables(diff *ProfileDiff, left, right *Profile) {
-	leftExecs := executablePaths(left)
-	rightExecs := executablePaths(right)
-
-	if execDiff := diffStrings(leftExecs, rightExecs); execDiff != nil {
+	if execDiff := diffStringSlice(executablePaths(left), executablePaths(right)); execDiff != nil {
 		diff.Equal = false
 		diff.Executables = execDiff
 	}
 
-	leftLibs := libraryPaths(left)
-	rightLibs := libraryPaths(right)
-
-	if libDiff := diffStrings(leftLibs, rightLibs); libDiff != nil {
+	if libDiff := diffStringSlice(libraryPaths(left), libraryPaths(right)); libDiff != nil {
 		diff.Equal = false
 		diff.Libraries = libDiff
 	}
@@ -130,9 +127,9 @@ func libraryPaths(profile *Profile) []string {
 }
 
 func diffFilesystem(diff *ProfileDiff, left, right *Profile) {
-	roDiff := diffStrings(fsPaths(left, fsReadOnly), fsPaths(right, fsReadOnly))
-	woDiff := diffStrings(fsPaths(left, fsWriteOnly), fsPaths(right, fsWriteOnly))
-	rwDiff := diffStrings(fsPaths(left, fsReadWrite), fsPaths(right, fsReadWrite))
+	roDiff := diffStringSlice(fsPaths(left, fsReadOnly), fsPaths(right, fsReadOnly))
+	woDiff := diffStringSlice(fsPaths(left, fsWriteOnly), fsPaths(right, fsWriteOnly))
+	rwDiff := diffStringSlice(fsPaths(left, fsReadWrite), fsPaths(right, fsReadWrite))
 
 	if roDiff != nil || woDiff != nil || rwDiff != nil {
 		diff.Equal = false
@@ -246,43 +243,17 @@ func diffCapabilities(diff *ProfileDiff, left, right *Profile) {
 		rightCaps = right.Capabilities.AllowedCapabilities
 	}
 
-	if capDiff := diffStrings(leftCaps, rightCaps); capDiff != nil {
+	if capDiff := diffStringSlice(leftCaps, rightCaps); capDiff != nil {
 		diff.Equal = false
 		diff.Capabilities = capDiff
 	}
 }
 
-func diffStrings(left, right []string) *StringSliceDiff {
-	leftSet := make(map[string]struct{}, len(left))
-	for _, str := range left {
-		leftSet[str] = struct{}{}
-	}
-
-	rightSet := make(map[string]struct{}, len(right))
-	for _, str := range right {
-		rightSet[str] = struct{}{}
-	}
-
-	var added, removed []string
-
-	for str := range leftSet {
-		if _, ok := rightSet[str]; !ok {
-			removed = append(removed, str)
-		}
-	}
-
-	for str := range rightSet {
-		if _, ok := leftSet[str]; !ok {
-			added = append(added, str)
-		}
-	}
-
+func diffStringSlice(left, right []string) *StringSliceDiff {
+	added, removed := merge.DiffSlice(left, right)
 	if len(added) == 0 && len(removed) == 0 {
 		return nil
 	}
-
-	slices.Sort(added)
-	slices.Sort(removed)
 
 	return &StringSliceDiff{Added: added, Removed: removed}
 }

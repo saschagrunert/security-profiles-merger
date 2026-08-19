@@ -18,6 +18,7 @@ limitations under the License.
 package merge
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -80,6 +81,40 @@ func FormatDiffItems[T ~string](prefix string, removed, added []T) string {
 	}
 
 	return prefix + ":" + strings.Join(items, ",")
+}
+
+// DiffSlice returns elements added to and removed from left relative to right.
+// Both slices are treated as sets; duplicates within a slice are ignored.
+// Results are sorted. Returns nil, nil when the sets are equal.
+//
+//nolint:nonamedreturns // gocritic requires named results
+func DiffSlice[T cmp.Ordered](left, right []T) (added, removed []T) {
+	leftSet := make(map[T]struct{}, len(left))
+	for _, item := range left {
+		leftSet[item] = struct{}{}
+	}
+
+	rightSet := make(map[T]struct{}, len(right))
+	for _, item := range right {
+		rightSet[item] = struct{}{}
+	}
+
+	for item := range leftSet {
+		if _, ok := rightSet[item]; !ok {
+			removed = append(removed, item)
+		}
+	}
+
+	for item := range rightSet {
+		if _, ok := leftSet[item]; !ok {
+			added = append(added, item)
+		}
+	}
+
+	slices.Sort(added)
+	slices.Sort(removed)
+
+	return added, removed
 }
 
 const smallSliceThreshold = 16

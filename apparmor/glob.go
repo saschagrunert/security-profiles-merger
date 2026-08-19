@@ -60,9 +60,10 @@ func globToRegex(pattern string) *regexp.Regexp {
 	if !loaded {
 		if globRegexCacheCount.Add(1) > maxGlobCacheEntries &&
 			globCacheEvicting.CompareAndSwap(false, true) {
+			globRegexCacheCount.Store(0)
 			globRegexCache.Clear()
-			globRegexCacheCount.Store(1)
 			globRegexCache.Store(pattern, compiled)
+			globRegexCacheCount.Store(1)
 			globCacheEvicting.Store(false)
 		}
 	}

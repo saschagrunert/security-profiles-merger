@@ -550,6 +550,17 @@ func FuzzAppArmorDiff(f *testing.F) {
 
 		apparmor.FormatDiff(diff)
 
+		reverse, err := apparmor.Diff(right, left)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff.Equal != reverse.Equal {
+			t.Error("Diff(L,R).Equal != Diff(R,L).Equal")
+		}
+
+		assertDiffSymmetry(t, diff, reverse)
+
 		selfDiff, err := apparmor.Diff(left, left)
 		if err != nil {
 			t.Fatal(err)
@@ -579,4 +590,48 @@ func FuzzAppArmorValidateStrict(f *testing.F) {
 
 		_ = apparmor.ValidateStrict(profile)
 	})
+}
+
+func assertDiffSymmetry(
+	t *testing.T,
+	fwd, rev *apparmor.ProfileDiff,
+) {
+	t.Helper()
+
+	assertStringDiffSwapped(t, "Executables", fwd.Executables, rev.Executables)
+	assertStringDiffSwapped(t, "Libraries", fwd.Libraries, rev.Libraries)
+	assertStringDiffSwapped(t, "Capabilities", fwd.Capabilities, rev.Capabilities)
+
+	if (fwd.Filesystem == nil) != (rev.Filesystem == nil) {
+		t.Error("Filesystem: nil mismatch")
+	} else if fwd.Filesystem != nil {
+		assertStringDiffSwapped(t, "ReadOnly", fwd.Filesystem.ReadOnly, rev.Filesystem.ReadOnly)
+		assertStringDiffSwapped(t, "WriteOnly", fwd.Filesystem.WriteOnly, rev.Filesystem.WriteOnly)
+		assertStringDiffSwapped(t, "ReadWrite", fwd.Filesystem.ReadWrite, rev.Filesystem.ReadWrite)
+	}
+}
+
+func assertStringDiffSwapped(
+	t *testing.T, label string,
+	fwd, rev *apparmor.StringSliceDiff,
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Errorf("%s: nil mismatch", label)
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if !slices.Equal(fwd.Added, rev.Removed) {
+		t.Errorf("%s: forward Added != reverse Removed", label)
+	}
+
+	if !slices.Equal(fwd.Removed, rev.Added) {
+		t.Errorf("%s: forward Removed != reverse Added", label)
+	}
 }

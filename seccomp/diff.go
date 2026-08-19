@@ -17,7 +17,6 @@ limitations under the License.
 package seccomp
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -54,6 +53,9 @@ type ProfileDiff struct {
 	// Syscalls is set when the syscall entries differ.
 	Syscalls *SyscallsDiff `json:"syscalls,omitempty"`
 }
+
+// IsEqual returns whether the two compared profiles are identical.
+func (d ProfileDiff) IsEqual() bool { return d.Equal }
 
 // ActionDiff represents a change in seccomp action.
 type ActionDiff struct {
@@ -109,6 +111,7 @@ type SyscallDetail struct {
 }
 
 // Diff compares two seccomp profiles and returns a structured diff.
+// Unlike Intersect and Union, Diff does not validate profiles before comparing.
 // Returns ErrNilProfile if either profile is nil.
 func Diff(left, right *specs.LinuxSeccomp) (*ProfileDiff, error) {
 	if left == nil || right == nil {
@@ -175,56 +178,21 @@ func equalUintPtr(first, second *uint) bool {
 func diffArchitectures(
 	diff *ProfileDiff, left, right *specs.LinuxSeccomp,
 ) {
-	result := diffSlice(left.Architectures, right.Architectures)
-	if result != nil {
+	added, removed := merge.DiffSlice(left.Architectures, right.Architectures)
+	if len(added) > 0 || len(removed) > 0 {
 		diff.Equal = false
-		diff.Architectures = result
+		diff.Architectures = &SliceDiff[specs.Arch]{Added: added, Removed: removed}
 	}
 }
 
 func diffFlags(
 	diff *ProfileDiff, left, right *specs.LinuxSeccomp,
 ) {
-	result := diffSlice(left.Flags, right.Flags)
-	if result != nil {
+	added, removed := merge.DiffSlice(left.Flags, right.Flags)
+	if len(added) > 0 || len(removed) > 0 {
 		diff.Equal = false
-		diff.Flags = result
+		diff.Flags = &SliceDiff[specs.LinuxSeccompFlag]{Added: added, Removed: removed}
 	}
-}
-
-func diffSlice[T cmp.Ordered](left, right []T) *SliceDiff[T] {
-	leftSet := make(map[T]struct{}, len(left))
-	for _, item := range left {
-		leftSet[item] = struct{}{}
-	}
-
-	rightSet := make(map[T]struct{}, len(right))
-	for _, item := range right {
-		rightSet[item] = struct{}{}
-	}
-
-	var added, removed []T
-
-	for item := range leftSet {
-		if _, ok := rightSet[item]; !ok {
-			removed = append(removed, item)
-		}
-	}
-
-	for item := range rightSet {
-		if _, ok := leftSet[item]; !ok {
-			added = append(added, item)
-		}
-	}
-
-	if len(added) == 0 && len(removed) == 0 {
-		return nil
-	}
-
-	slices.Sort(added)
-	slices.Sort(removed)
-
-	return &SliceDiff[T]{Added: added, Removed: removed}
 }
 
 func diffListener(

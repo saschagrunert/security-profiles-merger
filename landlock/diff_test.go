@@ -332,6 +332,11 @@ func TestDiffHandledAccessNet(t *testing.T) {
 	if len(diff.HandledAccessNet.Added) != 1 {
 		t.Errorf("added = %v, want 1", diff.HandledAccessNet.Added)
 	}
+
+	got := landlock.FormatDiff(diff)
+	if !strings.Contains(got, "net:") {
+		t.Errorf("FormatDiff() = %q, missing net:", got)
+	}
 }
 
 func TestDiffFormatChangedRules(t *testing.T) {

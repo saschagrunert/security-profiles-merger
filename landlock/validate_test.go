@@ -613,3 +613,30 @@ func TestValidateDuplicateNetRight(t *testing.T) {
 		t.Errorf("expected ErrDuplicateRight, got: %v", err)
 	}
 }
+
+func TestValidateDuplicatePathRuleRight(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  nil,
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path: pathEtc,
+			AccessFS: []landlock.FSAccessRight{
+				landlock.FSAccessReadFile,
+				landlock.FSAccessReadFile,
+			},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate FS right in path rule")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRight) {
+		t.Errorf("expected ErrDuplicateRight, got: %v", err)
+	}
+}
