@@ -176,7 +176,6 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 			continue
 		}
 
-		//nolint:gosec // G304: CLI reads user-specified files by design
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", path, err)

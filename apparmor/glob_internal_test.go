@@ -21,7 +21,6 @@ import (
 	"testing"
 )
 
-//nolint:paralleltest // mutates global cache state
 func TestGlobRegexCacheEviction(t *testing.T) {
 	globRegexCache.Clear()
 	globRegexCacheCount.Store(0)

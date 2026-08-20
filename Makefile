@@ -70,6 +70,19 @@ bench: ## Run benchmarks
 		$(GO) test -bench=. -benchmem -count=5 -run='^$$' $$pkg; \
 	done
 
+COVERAGE_THRESHOLD ?= 90
+
+.PHONY: verify-coverage
+verify-coverage: test ## Verify test coverage meets threshold
+	@total=$$($(GO) tool cover -func=$(BUILD_DIR)/coverage.out | \
+		grep '^total:' | awk '{print $$NF}' | tr -d '%'); \
+	if [ -z "$${total}" ]; then echo "Failed to parse coverage"; exit 1; fi; \
+	echo "Total coverage: $${total}%"; \
+	if awk "BEGIN {exit(!($${total} < $(COVERAGE_THRESHOLD)))}"; then \
+		echo "Coverage $${total}% is below threshold $(COVERAGE_THRESHOLD)%"; \
+		exit 1; \
+	fi
+
 ##@ Verification
 
 .PHONY: lint

@@ -255,6 +255,34 @@ func addLandlockFuzzSeeds(f *testing.F) {
 		uint16(80), uint16(8080),
 		uint8(0x00), uint8(0x00),
 	)
+
+	// Same ports, same paths (identical rules)
+	f.Add(
+		uint32(0x07), uint8(0x03), uint8(0x00),
+		"/etc", "/etc",
+		uint32(0x01), uint32(0x01),
+		uint16(80), uint16(80),
+		uint8(0x01), uint8(0x01),
+		uint32(0x07), uint8(0x03), uint8(0x00),
+		"/etc", "/etc",
+		uint32(0x01), uint32(0x01),
+		uint16(80), uint16(80),
+		uint8(0x01), uint8(0x01),
+	)
+
+	// Single FS right, single scope, no net
+	f.Add(
+		uint32(0x01), uint8(0x00), uint8(0x01),
+		"/a", "/b",
+		uint32(0x01), uint32(0x00),
+		uint16(0), uint16(0),
+		uint8(0x00), uint8(0x00),
+		uint32(0x01), uint8(0x00), uint8(0x02),
+		"/a", "/c",
+		uint32(0x01), uint32(0x00),
+		uint16(0), uint16(0),
+		uint8(0x00), uint8(0x00),
+	)
 }
 
 type fuzzMergeConfig struct {

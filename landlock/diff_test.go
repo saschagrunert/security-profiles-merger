@@ -227,7 +227,7 @@ func TestDiffPathRules(t *testing.T) {
 	}
 }
 
-func TestDiffNetRules(t *testing.T) { //nolint:funlen // comprehensive net rule diff test
+func TestDiffNetRules(t *testing.T) {
 	t.Parallel()
 
 	left := &landlock.Profile{
@@ -400,6 +400,58 @@ func TestDiffFormatNil(t *testing.T) {
 	const want = "Diff{<nil>}"
 	if got := landlock.FormatDiff(nil); got != want {
 		t.Errorf("FormatDiff(nil) = %q, want %q", got, want)
+	}
+}
+
+func TestDiffIsEqualTrue(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path:     pathEtc,
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	diff, err := landlock.Diff(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.IsEqual() {
+		t.Error("IsEqual() should return true for identical profiles")
+	}
+}
+
+func TestDiffIsEqualFalse(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+	right := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{landlock.FSAccessWriteFile},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules:        nil,
+		NetRules:         nil,
+	}
+
+	diff, err := landlock.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.IsEqual() {
+		t.Error("IsEqual() should return false for different profiles")
 	}
 }
 

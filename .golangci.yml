@@ -130,6 +130,8 @@ linters:
         - 'github\.com/opencontainers/runtime-spec/specs-go\..*'
     gocritic:
       enable-all: true
+      disabled-checks:
+        - unnamedResult
     goheader:
       template: |-
         Copyright The Kubernetes Authors.
@@ -149,6 +151,28 @@ linters:
       case:
         rules:
           json: goCamel
+  exclusions:
+    rules:
+      - linters:
+          - dupl
+          - funlen
+          - gochecknoglobals
+          - goconst
+          - gosec
+        path: _test\.go
+      - linters:
+          - gochecknoglobals
+        path: apparmor/glob\.go
+      - linters:
+          - tagliatelle
+        path: apparmor/(types|diff)\.go
+      - linters:
+          - gosec
+        path: cmd/spm/merge\.go
+        text: G304
+      - linters:
+          - paralleltest
+        path: apparmor/glob_internal_test\.go
 formatters:
   enable:
     - gci

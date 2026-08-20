@@ -1,0 +1,32 @@
+{
+  "equal": false,
+  "syscalls": {
+    "added": [
+      {
+        "name": "close",
+        "action": "SCMP_ACT_ALLOW"
+      }
+    ],
+    "removed": [
+      {
+        "name": "write",
+        "action": "SCMP_ACT_ALLOW"
+      }
+    ],
+    "changed": [
+      {
+        "name": "read",
+        "left": [
+          {
+            "action": "SCMP_ACT_ALLOW"
+          }
+        ],
+        "right": [
+          {
+            "action": "SCMP_ACT_LOG"
+          }
+        ]
+      }
+    ]
+  }
+}

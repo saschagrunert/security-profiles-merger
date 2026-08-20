@@ -41,6 +41,14 @@ const (
 	testBogus       = "bogus"
 	testEtcPath     = "/etc"
 	testSyscallRead = "read"
+
+	testUnknownType   = "unknown type"
+	testUnknownFormat = "unknown format"
+	testNoInput       = "no input"
+	testErrorColon    = "error:"
+	testExactlyTwo    = "exactly 2"
+	testdataSeccompA  = "testdata/seccomp_a.json"
+	testdataSeccompB  = "testdata/seccomp_b.json"
 )
 
 func TestNoArgs(t *testing.T) {
@@ -76,7 +84,7 @@ func TestVersion(t *testing.T) {
 func TestHelp(t *testing.T) {
 	t.Parallel()
 
-	for _, flag := range []string{flagHelp, "-h", "help"} {
+	for _, flag := range []string{flagHelp, "-h", cmdHelp} {
 		code, stdout, _ := runCapture(t, []string{flag}, nil)
 
 		if code != 0 {
@@ -105,7 +113,6 @@ func TestUnknownCommand(t *testing.T) {
 
 // Helpers.
 
-//nolint:gocritic // unnamedResult conflicts with nonamedreturns
 func runCapture(
 	t *testing.T,
 	args []string,

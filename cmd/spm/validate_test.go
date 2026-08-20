@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -26,120 +27,97 @@ import (
 	"github.com/saschagrunert/security-profiles-merger/landlock"
 )
 
-func TestValidateHelp(t *testing.T) {
+func TestValidateErrors(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runCapture(t, []string{cmdValidate, flagHelp}, nil)
+	invalidFile := writeTemp(t, "not json")
 
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
+	tests := []struct {
+		name       string
+		args       []string
+		stdin      io.Reader
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "validate help",
+			args:       []string{cmdValidate, flagHelp},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "[files...]",
+		},
+		{
+			name:       "missing type",
+			args:       []string{cmdValidate},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "--type is required",
+		},
+		{
+			name:       testUnknownType,
+			args:       []string{cmdValidate, flagType, testBogus},
+			stdin:      strings.NewReader("{}"),
+			wantCode:   exitUsage,
+			wantStderr: testUnknownType,
+		},
+		{
+			name:       testUnknownFormat,
+			args:       []string{cmdValidate, flagType, typeSeccomp, flagFormat, "xml"},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testUnknownFormat,
+		},
+		{
+			name:       "empty stdin",
+			args:       []string{cmdValidate, flagType, typeSeccomp},
+			stdin:      strings.NewReader(""),
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "empty array",
+			args:       []string{cmdValidate, flagType, typeSeccomp},
+			stdin:      strings.NewReader("[]"),
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "invalid JSON seccomp",
+			args:       []string{cmdValidate, flagType, typeSeccomp, invalidFile},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name:       "invalid JSON apparmor",
+			args:       []string{cmdValidate, flagType, typeAppArmor, invalidFile},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name:       "invalid JSON landlock",
+			args:       []string{cmdValidate, flagType, typeLandlock, invalidFile},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
 	}
 
-	if !strings.Contains(stderr, "Usage: spm validate") {
-		t.Errorf("stderr should contain usage header, got: %s", stderr)
-	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	if !strings.Contains(stderr, "[files...]") {
-		t.Errorf("stderr should mention files, got: %s", stderr)
-	}
-}
+			code, _, stderr := runCapture(t, testCase.args, testCase.stdin)
 
-func TestValidateEmptyStdin(t *testing.T) {
-	t.Parallel()
+			if code != testCase.wantCode {
+				t.Fatalf("exit code = %d, want %d", code, testCase.wantCode)
+			}
 
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeSeccomp,
-	}, strings.NewReader(""))
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "no input") {
-		t.Errorf("stderr = %q, want mention of no input", stderr)
-	}
-}
-
-func TestValidateUnknownFormat(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeSeccomp, flagFormat, "xml",
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown format") {
-		t.Errorf("stderr = %q, want mention of unknown format", stderr)
-	}
-}
-
-func TestValidateEmptyArray(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeSeccomp,
-	}, strings.NewReader("[]"))
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "no input") {
-		t.Errorf("stderr = %q, want mention of no input", stderr)
-	}
-}
-
-func TestValidateInvalidJSONSeccomp(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not json")
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeSeccomp, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
-	}
-}
-
-func TestValidateInvalidJSONAppArmor(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not json")
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeAppArmor, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
-	}
-}
-
-func TestValidateInvalidJSONLandlock(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not json")
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, typeLandlock, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
+			if !strings.Contains(stderr, testCase.wantStderr) {
+				t.Errorf("stderr = %q, missing %q", stderr, testCase.wantStderr)
+			}
+		})
 	}
 }
 
@@ -169,36 +147,6 @@ func TestValidateLandlockInvalid(t *testing.T) {
 
 	if !strings.Contains(stderr, "duplicate") {
 		t.Errorf("stderr = %q, want mention of duplicate", stderr)
-	}
-}
-
-func TestValidateMissingType(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{cmdValidate}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "--type is required") {
-		t.Errorf("stderr = %q, want mention of required flag", stderr)
-	}
-}
-
-func TestValidateUnknownType(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdValidate, flagType, testBogus,
-	}, strings.NewReader("{}"))
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown type") {
-		t.Errorf("stderr = %q, want mention of unknown type", stderr)
 	}
 }
 

@@ -3,18 +3,19 @@
 <!-- toc -->
 - [seccomp](#seccomp)
   - [Functions](#functions)
+  - [Types](#types)
   - [Errors](#errors)
   - [Merge semantics](#merge-semantics)
 - [apparmor](#apparmor)
   - [Functions](#functions-1)
   - [Errors](#errors-1)
-  - [Types](#types)
+  - [Types](#types-1)
   - [Nil vs empty semantics](#nil-vs-empty-semantics)
   - [Filesystem merge](#filesystem-merge)
 - [landlock](#landlock)
   - [Functions](#functions-2)
   - [Errors](#errors-2)
-  - [Types](#types-1)
+  - [Types](#types-2)
   - [Handled access semantics](#handled-access-semantics)
   - [IPC scoping](#ipc-scoping)
   - [Path and network rules](#path-and-network-rules)
@@ -34,63 +35,39 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
 
 ### Functions
 
-- `seccomp.Intersect(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error)` -
-  Merge profiles via intersection. The resulting profile permits a syscall only
-  if all input profiles permit it. For each syscall present in multiple profiles,
-  the more restrictive action is chosen.
-- `seccomp.Union(profiles ...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error)` -
-  Merge profiles via union. The resulting profile permits a syscall if any input
-  profile permits it. For each overlapping syscall, the less restrictive action
-  is chosen.
-- `seccomp.UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall` -
-  Merge two bare syscall slices via union without a profile-level DefaultAction.
-  Unlike `Union`, no entries are elided and unmatched entries keep their original
-  action. Multi-name entries are normalized to one-name-per-entry.
-- `seccomp.IntersectSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall` -
-  Merge two bare syscall slices via intersection without a profile-level
-  DefaultAction. Syscalls present in only one list are dropped. Multi-name
-  entries are normalized to one-name-per-entry and the result is sorted by name.
-- `seccomp.MoreRestrictive(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction` -
-  Returns the more restrictive of two seccomp actions.
-- `seccomp.LessRestrictive(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction` -
-  Returns the less restrictive of two seccomp actions.
-- `seccomp.Validate(profile *specs.LinuxSeccomp) error` -
-  Checks that a profile contains only known actions and that every syscall entry
-  has at least one name.
-- `seccomp.ValidateStrict(profile *specs.LinuxSeccomp) error` -
-  Performs all checks from Validate and additionally detects duplicate syscall
-  names across entries, unknown architectures, unknown flags, unknown arg
-  operators, and out-of-range arg indices. Use Validate for merge inputs and
-  ValidateStrict for user-authored profiles.
-- `seccomp.FormatProfile(profile *specs.LinuxSeccomp) string` -
-  Returns a human-readable representation of a seccomp profile.
-- `seccomp.Diff(left, right *specs.LinuxSeccomp) (*ProfileDiff, error)` -
-  Compares two profiles and returns a structured diff describing differences
-  in default action, default errno return, architectures, flags, listener
-  path, listener metadata, and syscalls. Multi-name entries are normalized
-  per name, and multiple rules for the same syscall (with different argument
-  filters) are correctly grouped and compared.
-- `seccomp.FormatDiff(diff *ProfileDiff) string` -
-  Returns a human-readable representation of a seccomp profile diff.
+| Function | Description |
+|----------|-------------|
+| `Intersect` | Merge profiles via intersection (most restrictive wins) |
+| `Union` | Merge profiles via union (least restrictive wins) |
+| `IntersectSyscalls` | Intersect two bare syscall slices without a DefaultAction |
+| `UnionSyscalls` | Union two bare syscall slices without a DefaultAction |
+| `MoreRestrictive` | Return the more restrictive of two seccomp actions |
+| `LessRestrictive` | Return the less restrictive of two seccomp actions |
+| `Validate` | Check for known actions and non-empty syscall names |
+| `ValidateStrict` | All Validate checks plus duplicates, unknown archs/flags/operators |
+| `FormatProfile` | Human-readable representation of a seccomp profile |
+| `Diff` | Structured diff between two profiles |
+| `FormatDiff` | Human-readable representation of a profile diff |
+
+See [pkg.go.dev](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/seccomp)
+for full signatures and documentation.
+
+### Types
+
+Diff types (`ProfileDiff`, `ActionDiff`, `UintPtrDiff`, `StringDiff`,
+`SliceDiff`, `SyscallsDiff`, `SyscallEntry`, `SyscallChange`, `SyscallDetail`)
+are documented in the
+[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/seccomp#ProfileDiff).
+
+`SyscallEntry` and `SyscallDetail` implement `fmt.Stringer` for human-readable
+formatting.
 
 ### Errors
 
-- `seccomp.ErrNoProfiles` - returned when no profiles are provided.
-- `seccomp.ErrNilProfile` - returned when a nil profile is provided.
-- `seccomp.ErrUnknownAction` - returned when a profile contains an unrecognized action.
-- `seccomp.ErrEmptySyscallNames` - returned when a syscall entry has no names.
-- `seccomp.ErrEmptySyscallName` - returned when a syscall entry contains an
-  empty string in its name list.
-- `seccomp.ErrDuplicateSyscallName` - returned by ValidateStrict when the same
-  syscall name appears in multiple entries.
-- `seccomp.ErrUnknownOperator` - returned by ValidateStrict when a syscall arg
-  contains an unrecognized comparison operator.
-- `seccomp.ErrArgIndexOutOfRange` - returned by ValidateStrict when a syscall
-  arg index exceeds the maximum (5).
-- `seccomp.ErrUnknownArch` - returned by ValidateStrict when a profile contains
-  an unrecognized architecture.
-- `seccomp.ErrUnknownFlag` - returned by ValidateStrict when a profile contains
-  an unrecognized seccomp flag.
+Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrUnknownAction`,
+`ErrEmptySyscallNames`, `ErrDuplicateSyscallName`, `ErrUnknownOperator`,
+`ErrArgIndexOutOfRange`, `ErrUnknownArch`, `ErrUnknownFlag`, etc.) are documented
+in the [package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/seccomp#pkg-variables).
 
 ### Merge semantics
 
@@ -130,57 +107,33 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 
 ### Functions
 
-- `apparmor.Intersect(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via intersection. Capabilities, executables, libraries, and
-  filesystem paths are intersected; boolean network permissions use AND semantics.
-- `apparmor.Union(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via union. All rule types are combined; boolean network
-  permissions use OR semantics.
-- `apparmor.Validate(profile *Profile) error` -
-  Checks that no path appears in multiple filesystem categories (e.g. both
-  read-only and write-only) and that capability names are known Linux
-  capabilities.
-- `apparmor.ValidateStrict(profile *Profile) error` -
-  Performs all checks from Validate and additionally verifies that no path
-  appears more than once in AllowedExecutables or AllowedLibraries. Use
-  Validate for merge inputs and ValidateStrict for user-authored profiles.
-- `apparmor.FormatProfile(profile *Profile) string` -
-  Returns a human-readable representation of an AppArmor profile.
-- `apparmor.IsGlobPattern(path string) bool` -
-  Reports whether the path contains AppArmor glob tokens.
-- `apparmor.Diff(left, right *Profile) (*ProfileDiff, error)` -
-  Compares two profiles and returns a structured diff describing differences
-  in executables, libraries, filesystem paths, network permissions, and
-  capabilities.
-- `apparmor.FormatDiff(diff *ProfileDiff) string` -
-  Returns a human-readable representation of an AppArmor profile diff.
+| Function | Description |
+|----------|-------------|
+| `Intersect` | Merge via intersection; capabilities/paths intersected, network AND |
+| `Union` | Merge via union; all rules combined, network OR |
+| `Validate` | Check for cross-category path conflicts and known capabilities |
+| `ValidateStrict` | All Validate checks plus duplicate executables/libraries |
+| `FormatProfile` | Human-readable representation of an AppArmor profile |
+| `IsGlobPattern` | Report whether a path contains AppArmor glob tokens |
+| `Diff` | Structured diff between two profiles |
+| `FormatDiff` | Human-readable representation of a profile diff |
+
+See [pkg.go.dev](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor)
+for full signatures and documentation.
 
 ### Errors
 
-- `apparmor.ErrNoProfiles` - returned when no profiles are provided.
-- `apparmor.ErrNilProfile` - returned when a nil profile is provided.
-- `apparmor.ErrDuplicatePath` - returned when a path appears in multiple
-  filesystem categories.
-- `apparmor.ErrDuplicatePathInCategory` - returned when a path appears more
-  than once within the same filesystem category.
-- `apparmor.ErrDuplicateCapability` - returned when the same capability appears
-  more than once in AllowedCapabilities.
-- `apparmor.ErrEmptyPath` - returned when a path rule contains an empty string.
-- `apparmor.ErrUnknownCapability` - returned when a profile contains a
-  capability name not in the known set of Linux capabilities.
-- `apparmor.ErrEmptyCapability` - returned when a capability entry is an empty
-  string.
-- `apparmor.ErrDuplicateExecutablePath` - returned by ValidateStrict when the
-  same path appears more than once in AllowedExecutables or AllowedLibraries.
+Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrDuplicatePath`,
+`ErrUnknownCapability`, `ErrDuplicateExecutablePath`, etc.) are documented
+in the [package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor#pkg-variables).
 
 ### Types
 
-- `Profile` - Top-level profile containing all rule sections.
-- `CapabilityRules` - Allowed Linux capabilities.
-- `ExecutableRules` - Allowed executables and libraries.
-- `FilesystemRules` - Read-only, write-only, and read-write path rules.
-- `NetworkRules` - Raw socket access and protocol permissions.
-- `AllowedProtocols` - TCP/UDP protocol permissions.
+Core types (`Profile`, `CapabilityRules`, `ExecutableRules`, `FilesystemRules`,
+`NetworkRules`, `AllowedProtocols`) and diff types (`ProfileDiff`,
+`StringSliceDiff`, `FilesystemDiff`, `NetworkDiff`, `BoolPtrDiff`) are
+documented in the
+[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor#Profile).
 
 `Profile`, `ExecutableRules`, `FilesystemRules`, `NetworkRules`, and
 `CapabilityRules` implement `fmt.Stringer` for human-readable formatting.
@@ -213,53 +166,33 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 
 ### Functions
 
-- `landlock.Intersect(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via intersection. HandledAccessFS, HandledAccessNet, and
-  Scoped are unioned (more handled rights / scoping = more restrictive).
-  Path and network rules are intersected per key.
-- `landlock.Union(profiles ...*Profile) (*Profile, error)` -
-  Merge profiles via union. HandledAccessFS, HandledAccessNet, and Scoped
-  are intersected (fewer handled rights / scoping = less restrictive).
-  Path and network rules are unioned per key.
-- `landlock.Validate(profile *Profile) error` -
-  Checks that a profile contains only known access rights, has no empty paths,
-  and has no duplicate path, port, or scope rules.
-- `landlock.ValidateStrict(profile *Profile) error` -
-  Performs all checks from Validate and additionally verifies that every rule's
-  access rights are a subset of the corresponding handled access set. Use
-  Validate for merge inputs and ValidateStrict for user-authored profiles.
-- `landlock.FormatProfile(profile *Profile) string` -
-  Returns a human-readable representation of a Landlock profile.
-- `landlock.Diff(left, right *Profile) (*ProfileDiff, error)` -
-  Compares two profiles and returns a structured diff describing differences
-  in handled access sets, scope restrictions, path rules, and network rules.
-- `landlock.FormatDiff(diff *ProfileDiff) string` -
-  Returns a human-readable representation of a Landlock profile diff.
+| Function | Description |
+|----------|-------------|
+| `Intersect` | Merge via intersection; handled sets unioned, rules intersected |
+| `Union` | Merge via union; handled sets intersected, rules unioned |
+| `Validate` | Check for known rights, empty paths, and duplicate rules |
+| `ValidateStrict` | All Validate checks plus unhandled-right detection |
+| `FormatProfile` | Human-readable representation of a Landlock profile |
+| `Diff` | Structured diff between two profiles |
+| `FormatDiff` | Human-readable representation of a profile diff |
+
+See [pkg.go.dev](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock)
+for full signatures and documentation.
 
 ### Errors
 
-- `landlock.ErrNoProfiles` - returned when no profiles are provided.
-- `landlock.ErrNilProfile` - returned when a nil profile is provided.
-- `landlock.ErrUnknownRight` - returned when a profile contains an unrecognized
-  access right.
-- `landlock.ErrDuplicateRule` - returned when a profile contains multiple rules
-  for the same path or port.
-- `landlock.ErrEmptyPath` - returned when a path rule has an empty path string.
-- `landlock.ErrUnhandledRight` - returned by ValidateStrict when a rule grants
-  an access right not listed in the handled access set.
-- `landlock.ErrDuplicateRight` - returned when the same access right appears
-  more than once in a handled set, rule, or scoped set.
+Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrUnknownRight`,
+`ErrDuplicateRule`, `ErrEmptyPath`, `ErrUnhandledRight`, `ErrDuplicateRight`,
+etc.) are documented in the
+[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock#pkg-variables).
 
 ### Types
 
-- `Profile` - Top-level Landlock ruleset containing handled access sets, scope
-  restrictions, and rules.
-- `FSAccessRight` - Filesystem access right (execute, read_file, write_file, etc.).
-- `NetAccessRight` - Network access right (bind_tcp, connect_tcp, bind_udp,
-  connect_send_udp, listen_tcp, accept_tcp).
-- `ScopeRight` - IPC scope restriction (abstract_unix_socket, signal).
-- `PathRule` - Per-path filesystem access rights.
-- `NetRule` - Per-port network access rights.
+Core types (`Profile`, `FSAccessRight`, `NetAccessRight`, `ScopeRight`,
+`PathRule`, `NetRule`) and diff types (`ProfileDiff`, `RightsDiff`,
+`PathRulesDiff`, `PathRuleChange`, `NetRulesDiff`, `NetRuleChange`) are
+documented in the
+[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock#Profile).
 
 `Profile`, `PathRule`, and `NetRule` implement `fmt.Stringer` for human-readable
 formatting.

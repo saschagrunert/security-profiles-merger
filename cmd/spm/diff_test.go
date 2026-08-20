@@ -17,11 +17,115 @@ limitations under the License.
 package main
 
 import (
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/saschagrunert/security-profiles-merger/seccomp"
 )
+
+func TestDiffErrors(t *testing.T) {
+	t.Parallel()
+
+	seccompFile := writeTemp(t, seccompJSON(t, testSyscallRead))
+	seccompFile2 := writeTemp(t, seccompJSON(t, testSyscallRead))
+	seccompFile3 := writeTemp(t, seccompJSON(t, testSyscallRead))
+	invalidFile := writeTemp(t, "not valid json")
+
+	tests := []struct {
+		name       string
+		args       []string
+		stdin      io.Reader
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "missing type",
+			args:       []string{cmdDiff, seccompFile, seccompFile2},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "--type",
+		},
+		{
+			name:       testUnknownType,
+			args:       []string{cmdDiff, flagType, testBogus, seccompFile, seccompFile2},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testUnknownType,
+		},
+		{
+			name:       "wrong file count",
+			args:       []string{cmdDiff, flagType, typeSeccomp, seccompFile},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testExactlyTwo,
+		},
+		{
+			name: "three files",
+			args: []string{
+				cmdDiff,
+				flagType,
+				typeSeccomp,
+				seccompFile,
+				seccompFile2,
+				seccompFile3,
+			},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testExactlyTwo,
+		},
+		{
+			name:       testUnknownFormat,
+			args:       []string{cmdDiff, flagType, typeSeccomp, flagFormat, testBogus},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testUnknownFormat,
+		},
+		{
+			name: "nonexistent file",
+			args: []string{
+				cmdDiff,
+				flagType,
+				typeSeccomp,
+				"/nonexistent/path.json",
+				seccompFile,
+			},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testErrorColon,
+		},
+		{
+			name:       "invalid JSON",
+			args:       []string{cmdDiff, flagType, typeSeccomp, invalidFile, seccompFile},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testErrorColon,
+		},
+		{
+			name:       "stdin wrong count",
+			args:       []string{cmdDiff, flagType, typeSeccomp},
+			stdin:      strings.NewReader("[" + seccompJSON(t, testSyscallRead) + "]"),
+			wantCode:   exitUsage,
+			wantStderr: testExactlyTwo,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			code, _, stderr := runCapture(t, testCase.args, testCase.stdin)
+
+			if code != testCase.wantCode {
+				t.Fatalf("exit code = %d, want %d", code, testCase.wantCode)
+			}
+
+			if !strings.Contains(stderr, testCase.wantStderr) {
+				t.Errorf("stderr = %q, missing %q", stderr, testCase.wantStderr)
+			}
+		})
+	}
+}
 
 func TestDiffSeccompEqual(t *testing.T) {
 	t.Parallel()
@@ -122,62 +226,6 @@ func TestDiffLandlock(t *testing.T) {
 	}
 }
 
-func TestDiffMissingType(t *testing.T) {
-	t.Parallel()
-
-	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
-	fileB := writeTemp(t, seccompJSON(t, testSyscallRead))
-
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, fileA, fileB,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "--type") {
-		t.Errorf("stderr should mention --type, got: %s", stderr)
-	}
-}
-
-func TestDiffUnknownType(t *testing.T) {
-	t.Parallel()
-
-	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
-	fileB := writeTemp(t, seccompJSON(t, testSyscallRead))
-
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, testBogus, fileA, fileB,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown type") {
-		t.Errorf("stderr should mention unknown type, got: %s", stderr)
-	}
-}
-
-func TestDiffWrongFileCount(t *testing.T) {
-	t.Parallel()
-
-	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
-
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, typeSeccomp, fileA,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "exactly 2") {
-		t.Errorf("stderr should mention 2 files, got: %s", stderr)
-	}
-}
-
 func TestDiffStdinArray(t *testing.T) {
 	t.Parallel()
 
@@ -202,76 +250,40 @@ func TestDiffStdinArray(t *testing.T) {
 	}
 }
 
-func TestDiffStdinWrongCount(t *testing.T) {
+func TestDiffAppArmorHuman(t *testing.T) {
 	t.Parallel()
 
-	profileA := seccompJSON(t, testSyscallRead)
-	stdin := strings.NewReader("[" + profileA + "]")
+	fileA := writeTemp(t, apparmorJSON(t, "NET_ADMIN"))
+	fileB := writeTemp(t, apparmorJSON(t, "CHOWN"))
 
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, typeSeccomp,
-	}, stdin)
+	code, stdout, _ := runCapture(t, []string{
+		cmdDiff, flagType, typeAppArmor, flagFormat, formatHuman, fileA, fileB,
+	}, nil)
 
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
+	if code != exitDiff {
+		t.Fatalf("exit code = %d, want %d", code, exitDiff)
 	}
 
-	if !strings.Contains(stderr, "exactly 2") {
-		t.Errorf("stderr should mention 2 profiles, got: %s", stderr)
+	if !strings.Contains(stdout, "Diff{") {
+		t.Errorf("expected Diff{...} output, got: %s", stdout)
 	}
 }
 
-func TestDiffInvalidJSON(t *testing.T) {
+func TestDiffLandlockHuman(t *testing.T) {
 	t.Parallel()
 
-	fileA := writeTemp(t, "not valid json")
-	fileB := writeTemp(t, seccompJSON(t, testSyscallRead))
+	fileA := writeTemp(t, landlockJSON(t, "read_file"))
+	fileB := writeTemp(t, landlockJSON(t, "write_file"))
 
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, typeSeccomp, fileA, fileB,
+	code, stdout, _ := runCapture(t, []string{
+		cmdDiff, flagType, typeLandlock, flagFormat, formatHuman, fileA, fileB,
 	}, nil)
 
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
+	if code != exitDiff {
+		t.Fatalf("exit code = %d, want %d", code, exitDiff)
 	}
 
-	if !strings.Contains(stderr, "error") {
-		t.Errorf("stderr should contain error, got: %s", stderr)
-	}
-}
-
-func TestDiffThreeFiles(t *testing.T) {
-	t.Parallel()
-
-	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
-	fileB := writeTemp(t, seccompJSON(t, testSyscallRead))
-	fileC := writeTemp(t, seccompJSON(t, testSyscallRead))
-
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, typeSeccomp, fileA, fileB, fileC,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "exactly 2") {
-		t.Errorf("stderr should mention 2 files, got: %s", stderr)
-	}
-}
-
-func TestDiffUnknownFormat(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdDiff, flagType, typeSeccomp, flagFormat, testBogus,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown format") {
-		t.Errorf("stderr should mention unknown format, got: %s", stderr)
+	if !strings.Contains(stdout, "Diff{") {
+		t.Errorf("expected Diff{...} output, got: %s", stdout)
 	}
 }

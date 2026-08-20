@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	exitDiff = 1
+	exitDiff         = 1
+	diffProfileCount = 2
 
 	diffUsage = `Usage: spm diff [options] <file1> <file2>
 
@@ -92,7 +93,7 @@ func readDiffInputs(
 			return nil, err
 		}
 
-		if len(data) != 2 { //nolint:mnd // diff requires exactly 2 profiles
+		if len(data) != diffProfileCount {
 			return nil, fmt.Errorf(
 				"got %d from stdin: %w", len(data), errDiffRequiresTwo,
 			)
@@ -101,7 +102,7 @@ func readDiffInputs(
 		return data, nil
 	}
 
-	if len(paths) != 2 { //nolint:mnd // diff requires exactly 2 profiles
+	if len(paths) != diffProfileCount {
 		return nil, fmt.Errorf(
 			"got %d files: %w", len(paths), errDiffRequiresTwo,
 		)

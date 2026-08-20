@@ -63,8 +63,8 @@ type FilesystemDiff struct {
 // NetworkDiff describes differences in network rules.
 type NetworkDiff struct {
 	AllowRaw *BoolPtrDiff `json:"allowRaw,omitempty"`
-	AllowTCP *BoolPtrDiff `json:"allowTcp,omitempty"` //nolint:tagliatelle // matches SPO CRD
-	AllowUDP *BoolPtrDiff `json:"allowUdp,omitempty"` //nolint:tagliatelle // matches SPO CRD
+	AllowTCP *BoolPtrDiff `json:"allowTcp,omitempty"`
+	AllowUDP *BoolPtrDiff `json:"allowUdp,omitempty"`
 }
 
 // BoolPtrDiff represents a change in an optional boolean value.
@@ -75,11 +75,19 @@ type BoolPtrDiff struct {
 
 // Diff compares two AppArmor profiles and returns a structured diff.
 // Unlike Intersect and Union, Diff does not validate profiles before comparing.
+// Paths are normalized and deduplicated before comparison to avoid false
+// positives from non-canonical representations (e.g. /foo/./bar vs /foo/bar).
 // Returns ErrNilProfile if either profile is nil.
 func Diff(left, right *Profile) (*ProfileDiff, error) {
 	if left == nil || right == nil {
 		return nil, ErrNilProfile
 	}
+
+	normLeft := normalizeProfile(left)
+	deduplicateProfile(normLeft)
+
+	normRight := normalizeProfile(right)
+	deduplicateProfile(normRight)
 
 	diff := &ProfileDiff{
 		Equal:        true,
@@ -90,10 +98,10 @@ func Diff(left, right *Profile) (*ProfileDiff, error) {
 		Capabilities: nil,
 	}
 
-	diffExecutables(diff, left, right)
-	diffFilesystem(diff, left, right)
-	diffNetwork(diff, left, right)
-	diffCapabilities(diff, left, right)
+	diffExecutables(diff, normLeft, normRight)
+	diffFilesystem(diff, normLeft, normRight)
+	diffNetwork(diff, normLeft, normRight)
+	diffCapabilities(diff, normLeft, normRight)
 
 	return diff, nil
 }

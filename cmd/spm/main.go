@@ -33,6 +33,7 @@ const (
 	cmdDiff     = "diff"
 
 	flagHelp = "--help"
+	cmdHelp  = "help"
 
 	typeSeccomp  = "seccomp"
 	typeAppArmor = "apparmor"
@@ -77,7 +78,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "spm %s\n", version)
 
 		return 0
-	case flagHelp, "-h", "help":
+	case flagHelp, "-h", cmdHelp:
 		_, _ = fmt.Fprint(stdout, usage)
 
 		return 0

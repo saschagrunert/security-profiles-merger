@@ -1,0 +1,1 @@
+Diff{-write->SCMP_ACT_ALLOW +close->SCMP_ACT_ALLOW ~read:SCMP_ACT_ALLOW->SCMP_ACT_LOG}

@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
@@ -28,37 +29,168 @@ import (
 	"github.com/saschagrunert/security-profiles-merger/seccomp"
 )
 
-func TestMergeHelp(t *testing.T) {
+func TestMergeErrors(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runCapture(t, []string{cmdMerge, flagHelp}, nil)
+	invalidFile := writeTemp(t, "not valid json")
 
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
+	tests := []struct {
+		name       string
+		args       []string
+		stdin      io.Reader
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "merge help",
+			args:       []string{cmdMerge, flagHelp},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "[files...]",
+		},
+		{
+			name:       "empty stdin",
+			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect},
+			stdin:      strings.NewReader(""),
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "nil stdin",
+			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "empty array",
+			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect},
+			stdin:      strings.NewReader("[]"),
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "missing flags",
+			args:       []string{cmdMerge},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "--type and --strategy are required",
+		},
+		{
+			name:       "missing strategy",
+			args:       []string{cmdMerge, flagType, typeSeccomp},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "--type and --strategy are required",
+		},
+		{
+			name:       "unknown strategy",
+			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, testBogus},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: "unknown strategy",
+		},
+		{
+			name:       testUnknownType,
+			args:       []string{cmdMerge, flagType, testBogus, flagStrategy, strategyIntersect},
+			stdin:      strings.NewReader("[{}]"),
+			wantCode:   exitUsage,
+			wantStderr: testUnknownType,
+		},
+		{
+			name: testUnknownFormat,
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeSeccomp,
+				flagStrategy,
+				strategyIntersect,
+				flagFormat,
+				"xml",
+			},
+			stdin:      nil,
+			wantCode:   exitUsage,
+			wantStderr: testUnknownFormat,
+		},
+		{
+			name: "nonexistent file",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeSeccomp,
+				flagStrategy,
+				strategyIntersect,
+				"/nonexistent/profile.json",
+			},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name: "invalid JSON seccomp",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeSeccomp,
+				flagStrategy,
+				strategyIntersect,
+				invalidFile,
+			},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name: "invalid JSON apparmor",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeAppArmor,
+				flagStrategy,
+				strategyUnion,
+				invalidFile,
+			},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name: "invalid JSON landlock",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeLandlock,
+				flagStrategy,
+				strategyIntersect,
+				invalidFile,
+			},
+			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testErrorColon,
+		},
+		{
+			name:       "stdin too large",
+			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect},
+			stdin:      bytes.NewReader(make([]byte, maxStdinSize+1)),
+			wantCode:   1,
+			wantStderr: "exceeds",
+		},
 	}
 
-	if !strings.Contains(stderr, "Usage: spm merge") {
-		t.Errorf("stderr should contain usage header, got: %s", stderr)
-	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	if !strings.Contains(stderr, "[files...]") {
-		t.Errorf("stderr should mention files, got: %s", stderr)
-	}
-}
+			code, _, stderr := runCapture(t, testCase.args, testCase.stdin)
 
-func TestMergeEmptyStdin(t *testing.T) {
-	t.Parallel()
+			if code != testCase.wantCode {
+				t.Fatalf("exit code = %d, want %d", code, testCase.wantCode)
+			}
 
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-	}, strings.NewReader(""))
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "no input") {
-		t.Errorf("stderr = %q, want mention of no input", stderr)
+			if !strings.Contains(stderr, testCase.wantStderr) {
+				t.Errorf("stderr = %q, missing %q", stderr, testCase.wantStderr)
+			}
+		})
 	}
 }
 
@@ -149,185 +281,6 @@ func TestMergeLandlockNoProfiles(t *testing.T) {
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
-	}
-}
-
-func TestMergeNilStdin(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "no input") {
-		t.Errorf("stderr = %q, want mention of no input", stderr)
-	}
-}
-
-func TestMergeEmptyArray(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-	}, strings.NewReader("[]"))
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "no input") {
-		t.Errorf("stderr = %q, want mention of no input", stderr)
-	}
-}
-
-func TestMergeMissingFlags(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{cmdMerge}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "--type and --strategy are required") {
-		t.Errorf("stderr = %q, want mention of required flags", stderr)
-	}
-}
-
-func TestMergeMissingStrategy(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "--type and --strategy are required") {
-		t.Errorf("stderr = %q, want mention of required flags", stderr)
-	}
-}
-
-func TestMergeUnknownStrategy(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, testBogus,
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown strategy") {
-		t.Errorf("stderr = %q, want mention of unknown strategy", stderr)
-	}
-}
-
-func TestMergeUnknownType(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, testBogus, flagStrategy, strategyIntersect,
-	}, strings.NewReader("[{}]"))
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown type") {
-		t.Errorf("stderr = %q, want mention of unknown type", stderr)
-	}
-}
-
-func TestMergeUnknownFormat(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-		flagFormat, "xml",
-	}, nil)
-
-	if code != exitUsage {
-		t.Fatalf("exit code = %d, want %d", code, exitUsage)
-	}
-
-	if !strings.Contains(stderr, "unknown format") {
-		t.Errorf("stderr = %q, want mention of unknown format", stderr)
-	}
-}
-
-func TestMergeNonexistentFile(t *testing.T) {
-	t.Parallel()
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-		"/nonexistent/profile.json",
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
-	}
-}
-
-func TestMergeInvalidJSON(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not valid json")
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
-	}
-}
-
-func TestMergeInvalidJSONAppArmor(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not valid json")
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeAppArmor, flagStrategy, strategyUnion, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
-	}
-}
-
-func TestMergeInvalidJSONLandlock(t *testing.T) {
-	t.Parallel()
-
-	file := writeTemp(t, "not valid json")
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeLandlock, flagStrategy, strategyIntersect, file,
-	}, nil)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "error:") {
-		t.Errorf("stderr = %q, want error message", stderr)
 	}
 }
 
@@ -553,23 +506,5 @@ func TestMergeStdinDash(t *testing.T) {
 
 	if len(result.Syscalls) != 1 {
 		t.Errorf("expected 1 syscall, got %d", len(result.Syscalls))
-	}
-}
-
-func TestMergeStdinTooLarge(t *testing.T) {
-	t.Parallel()
-
-	large := bytes.NewReader(make([]byte, maxStdinSize+1))
-
-	code, _, stderr := runCapture(t, []string{
-		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
-	}, large)
-
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-
-	if !strings.Contains(stderr, "exceeds") {
-		t.Errorf("stderr should mention size exceeded, got: %s", stderr)
 	}
 }
