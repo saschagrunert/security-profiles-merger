@@ -133,6 +133,24 @@ func addAppArmorFuzzSeeds(f *testing.F) {
 		uint64(0x1FFFFFFFFFF), "/etc/**", "/data/*", true, true, false,
 		uint64(0x1FFFFFFFFFF), "/opt/tool", "/proc/*/status", false, false, true,
 	)
+
+	// Single glob pattern on both sides
+	f.Add(
+		uint64(0x1000), "/var/log/**", "/var/log/**", true, false, false,
+		uint64(0x1000), "/var/log/*", "/var/log/*", false, true, true,
+	)
+
+	// Glob alternation patterns
+	f.Add(
+		uint64(0x1000), "/etc/{config,settings}", "/usr/lib/**", true, true, true,
+		uint64(0x1000), "/etc/{config,data}", "/opt/**", false, false, false,
+	)
+
+	// Unnormalized paths (e.g. /foo/./bar)
+	f.Add(
+		uint64(0x1000), "/foo/./bar", "/baz/../qux", false, false, false,
+		uint64(0x1000), "/foo/bar", "/qux", false, false, false,
+	)
 }
 
 type fuzzAppArmorCheckFunc func(*testing.T, *apparmor.Profile, *apparmor.Profile, *apparmor.Profile)

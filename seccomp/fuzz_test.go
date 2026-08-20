@@ -76,7 +76,7 @@ func flagsFromMask(mask uint8) []specs.LinuxSeccompFlag {
 	return result
 }
 
-func fuzzProfile( //nolint:funlen // fuzz helper needs many parameters
+func fuzzProfile(
 	defaultIdx, action1Idx, action2Idx uint8,
 	name1, name2 string,
 	hasArgs1, hasArgs2 bool,
@@ -204,6 +204,36 @@ func addFuzzSeeds(f *testing.F) {
 		"read", "open", false, false, uint64(0), uint64(0),
 		uint32(0x12), uint8(0x03),
 	)
+
+	// Allow default with single syscall, both args set
+	f.Add(
+		uint8(8), uint8(4), uint8(4),
+		"read", "read_alt", true, true, uint64(1), uint64(2),
+		uint32(0), uint8(0),
+		uint8(8), uint8(4), uint8(4),
+		"read", "read_alt", true, true, uint64(1), uint64(2),
+		uint32(0), uint8(0),
+	)
+
+	// Notify action on both sides
+	f.Add(
+		uint8(4), uint8(6), uint8(8),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0),
+		uint8(4), uint8(6), uint8(8),
+		"write", "read", false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0),
+	)
+
+	// All architectures and flags set
+	f.Add(
+		uint8(4), uint8(8), uint8(8),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint32(0x7FFFFF), uint8(0x07),
+		uint8(4), uint8(8), uint8(8),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint32(0x7FFFFF), uint8(0x07),
+	)
 }
 
 type fuzzMergeConfig struct {
@@ -211,7 +241,7 @@ type fuzzMergeConfig struct {
 	pickDefault func(specs.LinuxSeccompAction, specs.LinuxSeccompAction) specs.LinuxSeccompAction
 }
 
-func fuzzMerge( //nolint:funlen // fuzz helper needs many parameters
+func fuzzMerge(
 	t *testing.T,
 	cfg fuzzMergeConfig,
 	defL, act1L, act2L uint8,
@@ -508,7 +538,7 @@ func FuzzDiff(f *testing.F) {
 	})
 }
 
-func FuzzValidateStrict(f *testing.F) { //nolint:funlen // fuzz seeds need many values
+func FuzzValidateStrict(f *testing.F) {
 	f.Add(
 		uint8(4),
 		uint8(8),

@@ -1,0 +1,1 @@
+{"executable":{"allowedExecutables":["/usr/bin/python"],"allowedLibraries":["/usr/lib/libc.so"]},"filesystem":{"readOnlyPaths":["/var/log"]},"capability":{"allowedCapabilities":["NET_ADMIN","CHOWN"]}}

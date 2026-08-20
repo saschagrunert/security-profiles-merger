@@ -617,3 +617,290 @@ func TestDiffReorderedEntries(t *testing.T) {
 		t.Error("expected equal profiles regardless of entry order")
 	}
 }
+
+func TestDiffMultiEntryEqualSortedByErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoA := uint(1)
+	errnoB := uint(2)
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoA},
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoB},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoB},
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoA},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with reordered ErrnoRet entries")
+	}
+}
+
+func TestDiffMultiEntryEqualSortedByArgs(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 2, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 2, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with reordered Args entries")
+	}
+}
+
+func TestDiffMultiEntryEqualSortedByArgFields(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpMaskedEqual},
+				},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, ValueTwo: 20, Op: specs.OpGreaterThan},
+				},
+			},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, ValueTwo: 20, Op: specs.OpGreaterThan},
+				},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, ValueTwo: 10, Op: specs.OpMaskedEqual},
+				},
+			},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with reordered arg fields")
+	}
+}
+
+func TestDiffMultiEntryEqualSortedByOp(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpGreaterThan}},
+			},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpGreaterThan}},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with reordered Op entries")
+	}
+}
+
+func TestDiffMultiEntryEqualSortedByArgLen(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, Op: specs.OpEqualTo},
+					{Index: 1, Value: 2, Op: specs.OpEqualTo},
+				},
+			},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, Op: specs.OpEqualTo},
+					{Index: 1, Value: 2, Op: specs.OpEqualTo},
+				},
+			},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with reordered arg-length entries")
+	}
+}
+
+func TestDiffMultiEntryEqualNilVsSetErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoA := uint(1)
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: nil},
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoA},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: &errnoA},
+			{Names: []string{syscallClone}, Action: specs.ActErrno, ErrnoRet: nil},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles with nil vs set ErrnoRet reordered")
+	}
+}
+
+func TestDiffIsEqualTrue(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	diff, err := seccomp.Diff(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.IsEqual() {
+		t.Error("IsEqual() should return true for identical profiles")
+	}
+}
+
+func TestDiffIsEqualFalse(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{DefaultAction: specs.ActErrno}
+	right := &specs.LinuxSeccomp{DefaultAction: specs.ActAllow}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.IsEqual() {
+		t.Error("IsEqual() should return false for different profiles")
+	}
+}

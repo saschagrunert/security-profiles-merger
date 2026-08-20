@@ -86,9 +86,7 @@ func FormatDiffItems[T ~string](prefix string, removed, added []T) string {
 // DiffSlice returns elements added to and removed from left relative to right.
 // Both slices are treated as sets; duplicates within a slice are ignored.
 // Results are sorted. Returns nil, nil when the sets are equal.
-//
-//nolint:nonamedreturns // gocritic requires named results
-func DiffSlice[T cmp.Ordered](left, right []T) (added, removed []T) {
+func DiffSlice[T cmp.Ordered](left, right []T) ([]T, []T) {
 	leftSet := make(map[T]struct{}, len(left))
 	for _, item := range left {
 		leftSet[item] = struct{}{}
@@ -98,6 +96,8 @@ func DiffSlice[T cmp.Ordered](left, right []T) (added, removed []T) {
 	for _, item := range right {
 		rightSet[item] = struct{}{}
 	}
+
+	var added, removed []T
 
 	for item := range leftSet {
 		if _, ok := rightSet[item]; !ok {

@@ -235,7 +235,6 @@ func TestIntersectDisjointPathsHandled(t *testing.T) {
 	}
 }
 
-//nolint:dupl // same profiles, different merge strategy (intersect vs union)
 func TestIntersectDisjointPathsUnhandled(t *testing.T) {
 	t.Parallel()
 
@@ -379,7 +378,6 @@ func TestIntersectHandledAccessFSUnion(t *testing.T) {
 	}
 }
 
-//nolint:funlen // three-profile test setup is intentionally explicit
 func TestIntersectThreeProfiles(t *testing.T) {
 	t.Parallel()
 
@@ -557,7 +555,6 @@ func TestUnionOverlappingPathRules(t *testing.T) {
 	}
 }
 
-//nolint:dupl // same profiles, different merge strategy (intersect vs union)
 func TestUnionDisjointPathRules(t *testing.T) {
 	t.Parallel()
 

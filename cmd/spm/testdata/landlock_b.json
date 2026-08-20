@@ -1,0 +1,1 @@
+{"handledAccessFs":["read_file","execute"],"pathRules":[{"path":"/tmp","accessFs":["execute"]},{"path":"/var","accessFs":["read_file","execute"]}]}

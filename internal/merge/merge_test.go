@@ -36,7 +36,7 @@ func intersectCases() []struct {
 		right []string
 		want  []string
 	}{
-		{name: "both empty", left: nil, right: nil, want: nil}, //nolint:goconst // test case name
+		{name: "both empty", left: nil, right: nil, want: nil},
 		{name: "left empty", left: nil, right: []string{"a", "b"}, want: nil},
 		{name: "right empty", left: []string{"a", "b"}, right: nil, want: nil},
 		{name: "no overlap", left: []string{"a", "b"}, right: []string{"c", "d"}, want: nil},

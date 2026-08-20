@@ -17,6 +17,7 @@ limitations under the License.
 package seccomp
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -321,26 +322,71 @@ func equalSyscallEntrySlices(left, right []SyscallEntry) bool {
 		return false
 	}
 
-	matched := make([]bool, len(right))
+	sortedLeft := slices.Clone(left)
+	sortedRight := slices.Clone(right)
 
-	for _, leftEntry := range left {
-		found := false
+	sortSyscallEntries(sortedLeft)
+	sortSyscallEntries(sortedRight)
 
-		for rightIdx, rightEntry := range right {
-			if !matched[rightIdx] && equalSyscallEntry(leftEntry, rightEntry) {
-				matched[rightIdx] = true
-				found = true
-
-				break
-			}
-		}
-
-		if !found {
+	for idx := range sortedLeft {
+		if !equalSyscallEntry(sortedLeft[idx], sortedRight[idx]) {
 			return false
 		}
 	}
 
 	return true
+}
+
+func sortSyscallEntries(entries []SyscallEntry) {
+	slices.SortFunc(entries, func(left, right SyscallEntry) int {
+		if result := strings.Compare(string(left.Action), string(right.Action)); result != 0 {
+			return result
+		}
+
+		if result := compareUintPtr(left.ErrnoRet, right.ErrnoRet); result != 0 {
+			return result
+		}
+
+		return compareSyscallArgs(left.Args, right.Args)
+	})
+}
+
+func compareUintPtr(left, right *uint) int {
+	if left == nil && right == nil {
+		return 0
+	}
+
+	if left == nil {
+		return -1
+	}
+
+	if right == nil {
+		return 1
+	}
+
+	return cmp.Compare(*left, *right)
+}
+
+func compareSyscallArgs(left, right []specs.LinuxSeccompArg) int {
+	for idx := range min(len(left), len(right)) {
+		if result := cmp.Compare(left[idx].Index, right[idx].Index); result != 0 {
+			return result
+		}
+
+		if result := cmp.Compare(left[idx].Value, right[idx].Value); result != 0 {
+			return result
+		}
+
+		if result := cmp.Compare(left[idx].ValueTwo, right[idx].ValueTwo); result != 0 {
+			return result
+		}
+
+		if result := strings.Compare(string(left[idx].Op), string(right[idx].Op)); result != 0 {
+			return result
+		}
+	}
+
+	return cmp.Compare(len(left), len(right))
 }
 
 func equalSyscallEntry(first, second SyscallEntry) bool {

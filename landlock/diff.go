@@ -195,10 +195,7 @@ func collectPathChanges(
 			continue
 		}
 
-		if !slices.Equal(
-			sortedRights(leftRule.AccessFS),
-			sortedRights(rightRule.AccessFS),
-		) {
+		if !equalRightsSorted(leftRule.AccessFS, rightRule.AccessFS) {
 			pathDiff.Changed = append(pathDiff.Changed, PathRuleChange{
 				Path:  path,
 				Left:  leftRule.AccessFS,
@@ -272,10 +269,7 @@ func collectNetChanges(
 			continue
 		}
 
-		if !slices.Equal(
-			sortedRights(leftRule.AccessNet),
-			sortedRights(rightRule.AccessNet),
-		) {
+		if !equalRightsSorted(leftRule.AccessNet, rightRule.AccessNet) {
 			netDiff.Changed = append(netDiff.Changed, NetRuleChange{
 				Port:  port,
 				Left:  leftRule.AccessNet,
@@ -285,11 +279,14 @@ func collectNetChanges(
 	}
 }
 
-func sortedRights[T ~string](rights []T) []T {
-	sorted := slices.Clone(rights)
-	slices.Sort(sorted)
+func equalRightsSorted[T ~string](left, right []T) bool {
+	sortedLeft := slices.Clone(left)
+	sortedRight := slices.Clone(right)
 
-	return sorted
+	slices.Sort(sortedLeft)
+	slices.Sort(sortedRight)
+
+	return slices.Equal(sortedLeft, sortedRight)
 }
 
 // FormatDiff returns a human-readable representation of a Landlock profile diff.

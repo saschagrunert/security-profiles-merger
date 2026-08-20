@@ -236,3 +236,104 @@ func TestFormatProfileListenerMetadataWithoutPath(t *testing.T) {
 		t.Errorf("FormatProfile() = %q, want %q", got, want)
 	}
 }
+
+func TestSyscallEntryString(t *testing.T) {
+	t.Parallel()
+
+	entry := seccomp.SyscallEntry{
+		Name:     syscallRead,
+		Action:   specs.ActAllow,
+		ErrnoRet: nil,
+		Args:     nil,
+	}
+
+	const want = "read->SCMP_ACT_ALLOW"
+
+	if got := entry.String(); got != want {
+		t.Errorf("SyscallEntry.String() = %q, want %q", got, want)
+	}
+}
+
+func TestSyscallEntryStringWithArgs(t *testing.T) {
+	t.Parallel()
+
+	entry := seccomp.SyscallEntry{
+		Name:     syscallClone,
+		Action:   specs.ActAllow,
+		ErrnoRet: nil,
+		Args:     []specs.LinuxSeccompArg{{Index: 0, Value: 0x10000, Op: specs.OpEqualTo}},
+	}
+
+	const want = "clone([0]SCMP_CMP_EQ:65536)->SCMP_ACT_ALLOW"
+
+	if got := entry.String(); got != want {
+		t.Errorf("SyscallEntry.String() = %q, want %q", got, want)
+	}
+}
+
+func TestSyscallEntryStringWithErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoRet := uint(1)
+	entry := seccomp.SyscallEntry{
+		Name:     syscallRead,
+		Action:   specs.ActErrno,
+		ErrnoRet: &errnoRet,
+		Args:     nil,
+	}
+
+	const want = "read->SCMP_ACT_ERRNO(errno:1)"
+
+	if got := entry.String(); got != want {
+		t.Errorf("SyscallEntry.String() = %q, want %q", got, want)
+	}
+}
+
+func TestSyscallDetailString(t *testing.T) {
+	t.Parallel()
+
+	detail := seccomp.SyscallDetail{
+		Action:   specs.ActAllow,
+		ErrnoRet: nil,
+		Args:     nil,
+	}
+
+	const want = "SCMP_ACT_ALLOW"
+
+	if got := detail.String(); got != want {
+		t.Errorf("SyscallDetail.String() = %q, want %q", got, want)
+	}
+}
+
+func TestSyscallDetailStringWithErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errnoRet := uint(22)
+	detail := seccomp.SyscallDetail{
+		Action:   specs.ActErrno,
+		ErrnoRet: &errnoRet,
+		Args:     nil,
+	}
+
+	const want = "SCMP_ACT_ERRNO(errno:22)"
+
+	if got := detail.String(); got != want {
+		t.Errorf("SyscallDetail.String() = %q, want %q", got, want)
+	}
+}
+
+func TestSyscallDetailStringWithArgs(t *testing.T) {
+	t.Parallel()
+
+	detail := seccomp.SyscallDetail{
+		Action:   specs.ActAllow,
+		ErrnoRet: nil,
+		Args:     []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+	}
+
+	const want = "([0]SCMP_CMP_EQ:1)->SCMP_ACT_ALLOW"
+
+	if got := detail.String(); got != want {
+		t.Errorf("SyscallDetail.String() = %q, want %q", got, want)
+	}
+}

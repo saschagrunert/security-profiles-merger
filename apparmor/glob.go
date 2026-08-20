@@ -32,13 +32,13 @@ var (
 	neverMatchRe = regexp.MustCompile(`^(?:$.)$`)
 
 	// globRegexCache caches compiled glob patterns for reuse.
-	globRegexCache sync.Map //nolint:gochecknoglobals // process-wide cache
+	globRegexCache sync.Map
 
 	// globRegexCacheCount tracks the number of entries in the cache.
-	globRegexCacheCount atomic.Int64 //nolint:gochecknoglobals // tracks cache size
+	globRegexCacheCount atomic.Int64
 
 	// globCacheEvicting prevents concurrent eviction storms.
-	globCacheEvicting atomic.Bool //nolint:gochecknoglobals // guards eviction
+	globCacheEvicting atomic.Bool
 )
 
 const (
@@ -138,12 +138,17 @@ type apparmorPath struct {
 }
 
 type pathSet struct {
-	paths    []apparmorPath
-	literals map[string]struct{}
+	paths      []apparmorPath
+	literals   map[string]struct{}
+	literalIdx map[string]int
 }
 
 func newPathSet(patterns []string) pathSet {
-	set := pathSet{paths: nil, literals: make(map[string]struct{})}
+	set := pathSet{
+		paths:      nil,
+		literals:   make(map[string]struct{}),
+		literalIdx: make(map[string]int),
+	}
 
 	for _, pat := range patterns {
 		set.add(pat)
@@ -156,12 +161,8 @@ func newPathSet(patterns []string) pathSet {
 // or whose pattern equals path exactly. Only checks forward matching
 // (existing pattern covers incoming path).
 func (set *pathSet) findMatch(path string) int {
-	if _, ok := set.literals[path]; ok {
-		for idx, entry := range set.paths {
-			if entry.pattern == path {
-				return idx
-			}
-		}
+	if idx, ok := set.literalIdx[path]; ok {
+		return idx
 	}
 
 	for idx, entry := range set.paths {
@@ -181,9 +182,11 @@ func (set *pathSet) removeAt(idx int) {
 	removed := set.paths[idx]
 	if !globTokenRe.MatchString(removed.pattern) {
 		delete(set.literals, removed.pattern)
+		delete(set.literalIdx, removed.pattern)
 	}
 
 	set.paths = slices.Delete(set.paths, idx, idx+1)
+	set.rebuildLiteralIdx()
 }
 
 func (set *pathSet) add(pattern string) {
@@ -202,6 +205,7 @@ func (set *pathSet) add(pattern string) {
 			expr.MatchString(existing.pattern)
 		if pruned {
 			delete(set.literals, existing.pattern)
+			delete(set.literalIdx, existing.pattern)
 		}
 
 		return pruned
@@ -215,9 +219,27 @@ func (set *pathSet) add(pattern string) {
 	if !globTokenRe.MatchString(pattern) {
 		set.literals[pattern] = struct{}{}
 	}
+
+	set.rebuildLiteralIdx()
+}
+
+func (set *pathSet) rebuildLiteralIdx() {
+	clear(set.literalIdx)
+
+	for idx, entry := range set.paths {
+		if _, ok := set.literals[entry.pattern]; ok {
+			set.literalIdx[entry.pattern] = idx
+		}
+	}
 }
 
 func (set *pathSet) popExact(path string) bool {
+	if idx, ok := set.literalIdx[path]; ok {
+		set.removeAt(idx)
+
+		return true
+	}
+
 	for idx, entry := range set.paths {
 		if entry.pattern == path {
 			set.removeAt(idx)
@@ -239,12 +261,17 @@ func (set *pathSet) popCoveredLiterals(glob string) []string {
 			expr.MatchString(existing.pattern)
 		if matched {
 			delete(set.literals, existing.pattern)
+			delete(set.literalIdx, existing.pattern)
 
 			popped = append(popped, existing.pattern)
 		}
 
 		return matched
 	})
+
+	if len(popped) > 0 {
+		set.rebuildLiteralIdx()
+	}
 
 	return popped
 }

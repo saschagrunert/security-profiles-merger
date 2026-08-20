@@ -491,3 +491,192 @@ func TestDiffNilVsNonNilNetwork(t *testing.T) {
 		t.Error("expected AllowRaw diff")
 	}
 }
+
+func TestDiffIsEqualTrue(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+
+	diff, err := apparmor.Diff(profile, profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.IsEqual() {
+		t.Error("IsEqual() should return true for identical profiles")
+	}
+}
+
+func TestDiffIsEqualFalse(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin},
+		},
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capChown},
+		},
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.IsEqual() {
+		t.Error("IsEqual() should return false for different profiles")
+	}
+}
+
+func TestDiffNormalizesPathsBeforeComparing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		left  *apparmor.Profile
+		right *apparmor.Profile
+	}{
+		{
+			name: "ReadOnlyPaths",
+			left: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  []string{"/foo/./bar"},
+					WriteOnlyPaths: nil,
+					ReadWritePaths: nil,
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+			right: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  []string{"/foo/bar"},
+					WriteOnlyPaths: nil,
+					ReadWritePaths: nil,
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+		},
+		{
+			name: "WriteOnlyPaths",
+			left: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  nil,
+					WriteOnlyPaths: []string{"/tmp/../var/log"},
+					ReadWritePaths: nil,
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+			right: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  nil,
+					WriteOnlyPaths: []string{"/var/log"},
+					ReadWritePaths: nil,
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+		},
+		{
+			name: "ReadWritePaths",
+			left: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  nil,
+					WriteOnlyPaths: nil,
+					ReadWritePaths: []string{"/a/b/../c"},
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+			right: &apparmor.Profile{
+				Executable: nil,
+				Filesystem: &apparmor.FilesystemRules{
+					ReadOnlyPaths:  nil,
+					WriteOnlyPaths: nil,
+					ReadWritePaths: []string{"/a/c"},
+				},
+				Network:      nil,
+				Capabilities: nil,
+			},
+		},
+		{
+			name: "AllowedExecutables",
+			left: &apparmor.Profile{
+				Executable: &apparmor.ExecutableRules{
+					AllowedExecutables: []string{"/usr/./bin/ls"},
+					AllowedLibraries:   nil,
+				},
+				Filesystem:   nil,
+				Network:      nil,
+				Capabilities: nil,
+			},
+			right: &apparmor.Profile{
+				Executable: &apparmor.ExecutableRules{
+					AllowedExecutables: []string{"/usr/bin/ls"},
+					AllowedLibraries:   nil,
+				},
+				Filesystem:   nil,
+				Network:      nil,
+				Capabilities: nil,
+			},
+		},
+		{
+			name: "AllowedLibraries",
+			left: &apparmor.Profile{
+				Executable: &apparmor.ExecutableRules{
+					AllowedExecutables: nil,
+					AllowedLibraries:   []string{"/usr/lib/../lib/libc.so"},
+				},
+				Filesystem:   nil,
+				Network:      nil,
+				Capabilities: nil,
+			},
+			right: &apparmor.Profile{
+				Executable: &apparmor.ExecutableRules{
+					AllowedExecutables: nil,
+					AllowedLibraries:   []string{"/usr/lib/libc.so"},
+				},
+				Filesystem:   nil,
+				Network:      nil,
+				Capabilities: nil,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			diff, err := apparmor.Diff(test.left, test.right)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !diff.IsEqual() {
+				t.Errorf("Diff should normalize %s, got non-equal", test.name)
+			}
+		})
+	}
+}
