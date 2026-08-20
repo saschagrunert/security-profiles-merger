@@ -391,8 +391,7 @@ func pickSyscall(
 		Action: pickedAction,
 	}
 
-	// Uses == (not actionsEquivalent) to check which literal input pick returned.
-	if pickedAction == left.Action {
+	if actionsEquivalent(pickedAction, left.Action) {
 		result.ErrnoRet = copyErrnoRet(left.ErrnoRet)
 	} else {
 		result.ErrnoRet = copyErrnoRet(right.ErrnoRet)

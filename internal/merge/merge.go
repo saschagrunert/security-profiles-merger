@@ -30,6 +30,8 @@ var (
 	ErrNoProfiles = errors.New("at least one profile is required")
 	// ErrNilProfile is returned when a nil profile is provided.
 	ErrNilProfile = errors.New("profile must not be nil")
+	// ErrEmptyPath is returned when a path rule contains an empty string.
+	ErrEmptyPath = errors.New("empty path")
 )
 
 // Fold validates and merges a slice of profiles using pairwise reduction.
@@ -87,6 +89,10 @@ func FormatDiffItems[T ~string](prefix string, removed, added []T) string {
 // Both slices are treated as sets; duplicates within a slice are ignored.
 // Results are sorted. Returns nil, nil when the sets are equal.
 func DiffSlice[T cmp.Ordered](left, right []T) ([]T, []T) {
+	if len(left) == 0 && len(right) == 0 {
+		return nil, nil
+	}
+
 	leftSet := make(map[T]struct{}, len(left))
 	for _, item := range left {
 		leftSet[item] = struct{}{}

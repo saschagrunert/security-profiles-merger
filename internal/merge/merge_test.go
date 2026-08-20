@@ -18,6 +18,7 @@ package merge_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -426,6 +427,73 @@ func TestDiffSlice(t *testing.T) {
 
 			if !slices.Equal(removed, test.wantRemoved) {
 				t.Errorf("removed = %v, want %v", removed, test.wantRemoved)
+			}
+		})
+	}
+}
+
+func buildOverlappingSlices(size int) ([]string, []string) {
+	half := size / 2
+	left := make([]string, 0, size)
+	right := make([]string, 0, size)
+
+	for idx := range size {
+		left = append(left, fmt.Sprintf("item_%d", idx))
+	}
+
+	for idx := range size {
+		right = append(right, fmt.Sprintf("item_%d", idx+half))
+	}
+
+	return left, right
+}
+
+func BenchmarkIntersectSlice(b *testing.B) {
+	for _, size := range []int{8, 20, 100} {
+		left, right := buildOverlappingSlices(size)
+
+		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+			for range b.N {
+				_ = merge.IntersectSlice(left, right)
+			}
+		})
+	}
+}
+
+func BenchmarkUnionSlice(b *testing.B) {
+	for _, size := range []int{8, 20, 100} {
+		left, right := buildOverlappingSlices(size)
+
+		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+			for range b.N {
+				_ = merge.UnionSlice(left, right)
+			}
+		})
+	}
+}
+
+func BenchmarkDiffSlice(b *testing.B) {
+	for _, size := range []int{8, 20, 100} {
+		left, right := buildOverlappingSlices(size)
+
+		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+			for range b.N {
+				_, _ = merge.DiffSlice(left, right)
+			}
+		})
+	}
+}
+
+func BenchmarkFold(b *testing.B) {
+	for _, count := range []int{2, 5, 10} {
+		profiles := make([]*testProfile, count)
+		for idx := range count {
+			profiles[idx] = &testProfile{value: idx + 1}
+		}
+
+		b.Run(fmt.Sprintf("profiles=%d", count), func(b *testing.B) {
+			for range b.N {
+				_, _ = merge.Fold(profiles, cloneTestProfile, addTestProfiles)
 			}
 		})
 	}

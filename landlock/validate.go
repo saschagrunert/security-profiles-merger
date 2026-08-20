@@ -19,6 +19,8 @@ package landlock
 import (
 	"errors"
 	"fmt"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 var (
@@ -31,7 +33,7 @@ var (
 	ErrDuplicateRule = errors.New("duplicate rule")
 
 	// ErrEmptyPath is returned when a path rule has an empty path string.
-	ErrEmptyPath = errors.New("empty path")
+	ErrEmptyPath = merge.ErrEmptyPath
 
 	// ErrUnhandledRight is returned when a rule grants an access right
 	// that is not listed in the profile's handled access set.
