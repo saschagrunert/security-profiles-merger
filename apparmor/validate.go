@@ -19,6 +19,8 @@ package apparmor
 import (
 	"errors"
 	"fmt"
+
+	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
 
 var (
@@ -39,7 +41,7 @@ var (
 	ErrUnknownCapability = errors.New("unknown capability")
 
 	// ErrEmptyPath is returned when a path rule contains an empty string.
-	ErrEmptyPath = errors.New("empty path")
+	ErrEmptyPath = merge.ErrEmptyPath
 
 	// ErrEmptyCapability is returned when a capability entry is an empty
 	// string.

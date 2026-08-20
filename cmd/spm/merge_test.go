@@ -171,7 +171,7 @@ func TestMergeErrors(t *testing.T) {
 		{
 			name:       "stdin too large",
 			args:       []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect},
-			stdin:      bytes.NewReader(make([]byte, maxStdinSize+1)),
+			stdin:      bytes.NewReader(make([]byte, maxInputSize+1)),
 			wantCode:   1,
 			wantStderr: "exceeds",
 		},

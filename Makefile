@@ -2,6 +2,7 @@ GO ?= go
 FUZZTIME ?= 30s
 
 GOLANGCI_LINT_VERSION = 2.12.2
+GOVULNCHECK_VERSION = v1.7.0
 MDTOC_VERSION = v1.4.0
 ZEITGEIST_VERSION = v0.8.0
 
@@ -19,6 +20,7 @@ COLOR := \033[36m
 NOCOLOR := \033[0m
 
 PACKAGES := $(shell $(GO) list ./... | grep -v /internal/)
+ALL_PACKAGES := $(shell $(GO) list ./...)
 
 .PHONY: all
 all: build lint test ## Build, lint, and test the project
@@ -66,7 +68,7 @@ fuzz: ## Run all fuzz tests (use FUZZTIME to adjust, default 30s)
 
 .PHONY: bench
 bench: ## Run benchmarks
-	@for pkg in $(PACKAGES); do \
+	@for pkg in $(ALL_PACKAGES); do \
 		$(GO) test -bench=. -benchmem -count=5 -run='^$$' $$pkg; \
 	done
 
@@ -117,7 +119,7 @@ verify-tidy: ## Verify go.mod is tidy
 
 .PHONY: govulncheck
 govulncheck: ## Run govulncheck
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 ##@ Maintenance
 

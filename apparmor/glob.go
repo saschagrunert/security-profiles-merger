@@ -58,9 +58,9 @@ func globToRegex(pattern string) *regexp.Regexp {
 
 	actual, loaded := globRegexCache.LoadOrStore(pattern, compiled)
 	if !loaded {
-		if globRegexCacheCount.Add(1) > maxGlobCacheEntries &&
+		count := globRegexCacheCount.Add(1)
+		if count > maxGlobCacheEntries &&
 			globCacheEvicting.CompareAndSwap(false, true) {
-			globRegexCacheCount.Store(0)
 			globRegexCache.Clear()
 			globRegexCache.Store(pattern, compiled)
 			globRegexCacheCount.Store(1)
@@ -145,13 +145,29 @@ type pathSet struct {
 
 func newPathSet(patterns []string) pathSet {
 	set := pathSet{
-		paths:      nil,
-		literals:   make(map[string]struct{}),
-		literalIdx: make(map[string]int),
+		paths:      make([]apparmorPath, 0, len(patterns)),
+		literals:   make(map[string]struct{}, len(patterns)),
+		literalIdx: make(map[string]int, len(patterns)),
 	}
 
+	seen := make(map[string]struct{}, len(patterns))
+
 	for _, pat := range patterns {
-		set.add(pat)
+		if _, ok := seen[pat]; ok {
+			continue
+		}
+
+		seen[pat] = struct{}{}
+
+		expr := globToRegex(pat)
+		idx := len(set.paths)
+
+		set.paths = append(set.paths, apparmorPath{pattern: pat, expr: expr})
+
+		if !globTokenRe.MatchString(pat) {
+			set.literals[pat] = struct{}{}
+			set.literalIdx[pat] = idx
+		}
 	}
 
 	return set
@@ -196,6 +212,8 @@ func (set *pathSet) add(pattern string) {
 	// pattern. Glob-vs-glob subsumption is not attempted because matching
 	// a glob pattern string against another glob's regex does not reliably
 	// indicate language inclusion.
+	prevLen := len(set.paths)
+
 	set.paths = slices.DeleteFunc(set.paths, func(existing apparmorPath) bool {
 		if existing.pattern == pattern {
 			return true
@@ -205,22 +223,28 @@ func (set *pathSet) add(pattern string) {
 			expr.MatchString(existing.pattern)
 		if pruned {
 			delete(set.literals, existing.pattern)
-			delete(set.literalIdx, existing.pattern)
 		}
 
 		return pruned
 	})
+
+	deleted := len(set.paths) < prevLen
 
 	set.paths = append(set.paths, apparmorPath{
 		pattern: pattern,
 		expr:    expr,
 	})
 
-	if !globTokenRe.MatchString(pattern) {
+	isLiteral := !globTokenRe.MatchString(pattern)
+	if isLiteral {
 		set.literals[pattern] = struct{}{}
 	}
 
-	set.rebuildLiteralIdx()
+	if deleted {
+		set.rebuildLiteralIdx()
+	} else if isLiteral {
+		set.literalIdx[pattern] = len(set.paths) - 1
+	}
 }
 
 func (set *pathSet) rebuildLiteralIdx() {

@@ -176,6 +176,17 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 			continue
 		}
 
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+
+		if info.Size() > maxInputSize {
+			return nil, fmt.Errorf(
+				"reading %s: %w (%d bytes)", path, errFileTooLarge, info.Size(),
+			)
+		}
+
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -187,11 +198,12 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 	return result, nil
 }
 
-const maxStdinSize = 10 << 20
+const maxInputSize = 10 << 20
 
 var (
 	errEmptyInput    = errors.New("no input provided")
-	errStdinTooLarge = fmt.Errorf("stdin input exceeds %d bytes", maxStdinSize)
+	errStdinTooLarge = fmt.Errorf("stdin input exceeds %d bytes", maxInputSize)
+	errFileTooLarge  = fmt.Errorf("file exceeds %d byte limit", maxInputSize)
 )
 
 func readFromStdin(reader io.Reader) ([][]byte, error) {
@@ -199,12 +211,12 @@ func readFromStdin(reader io.Reader) ([][]byte, error) {
 		return nil, errEmptyInput
 	}
 
-	data, err := io.ReadAll(io.LimitReader(reader, maxStdinSize+1))
+	data, err := io.ReadAll(io.LimitReader(reader, maxInputSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading stdin: %w", err)
 	}
 
-	if len(data) > maxStdinSize {
+	if len(data) > maxInputSize {
 		return nil, errStdinTooLarge
 	}
 

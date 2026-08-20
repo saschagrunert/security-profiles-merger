@@ -21,6 +21,12 @@ dependencies:
       - path: Makefile
         match: ^MDTOC_VERSION
 
+  - name: govulncheck
+    version: 1.7.0
+    refPaths:
+      - path: Makefile
+        match: ^GOVULNCHECK_VERSION
+
   - name: zeitgeist
     version: 0.8.0
     refPaths:
