@@ -250,8 +250,7 @@ func DeduplicateSlice[T comparable](items []T) []T {
 	}
 
 	seen := make(map[T]struct{}, len(items))
-
-	var result []T
+	result := make([]T, 0, len(items))
 
 	for _, item := range items {
 		if _, ok := seen[item]; !ok {

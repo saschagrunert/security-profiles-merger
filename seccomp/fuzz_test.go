@@ -83,6 +83,7 @@ func fuzzProfile(
 	argVal1, argVal2 uint64,
 	archMask uint32,
 	flagMask uint8,
+	defaultErrno, errno1, errno2 uint16,
 ) *specs.LinuxSeccomp {
 	actions := []specs.LinuxSeccompAction{
 		specs.ActKillProcess,
@@ -123,6 +124,11 @@ func fuzzProfile(
 		}
 	}
 
+	if errno1 != 0 {
+		val := uint(errno1)
+		sc1.ErrnoRet = &val
+	}
+
 	sc2 := specs.LinuxSyscall{
 		Names:  []string{name2},
 		Action: act2,
@@ -134,12 +140,24 @@ func fuzzProfile(
 		}
 	}
 
-	return &specs.LinuxSeccomp{
+	if errno2 != 0 {
+		val := uint(errno2)
+		sc2.ErrnoRet = &val
+	}
+
+	profile := &specs.LinuxSeccomp{
 		DefaultAction: defaultAction,
 		Architectures: archsFromMask(archMask),
 		Flags:         flagsFromMask(flagMask),
 		Syscalls:      []specs.LinuxSyscall{sc1, sc2},
 	}
+
+	if defaultErrno != 0 {
+		val := uint(defaultErrno)
+		profile.DefaultErrnoRet = &val
+	}
+
+	return profile
 }
 
 func addFuzzSeeds(f *testing.F) {
@@ -149,90 +167,100 @@ func addFuzzSeeds(f *testing.F) {
 	f.Add(
 		uint8(4), uint8(8), uint8(8),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(8), uint8(3),
 		"read", "open", true, false, uint64(65536), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Both sides have args on overlapping syscall
 	f.Add(
 		uint8(4), uint8(8), uint8(8),
 		"clone", "write", true, false, uint64(0x10000), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(8), uint8(8),
 		"clone", "read", true, false, uint64(0x20000), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Identical profiles with x86_64 arch and log flag
 	f.Add(
 		uint8(4), uint8(8), uint8(7),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x02), uint8(0x01),
+		uint32(0x02), uint8(0x01), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(8), uint8(7),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x02), uint8(0x01),
+		uint32(0x02), uint8(0x01), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Disjoint syscall names with different architectures
 	f.Add(
 		uint8(4), uint8(8), uint8(8),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x01), uint8(0),
+		uint32(0x01), uint8(0), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(8), uint8(8),
 		"open", "close", false, false, uint64(0), uint64(0),
-		uint32(0x02), uint8(0),
+		uint32(0x02), uint8(0), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Same syscall name in both profiles with different actions and flags
 	f.Add(
 		uint8(0), uint8(7), uint8(8),
 		"mmap", "brk", true, false, uint64(0xFFFF), uint64(0),
-		uint32(0x12), uint8(0x03),
+		uint32(0x12), uint8(0x03), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(3), uint8(8),
 		"mmap", "brk", true, false, uint64(0x1000), uint64(0),
-		uint32(0x12), uint8(0x05),
+		uint32(0x12), uint8(0x05), uint16(0), uint16(0), uint16(0),
 	)
 
 	// KillProcess default with overlapping architectures
 	f.Add(
 		uint8(0), uint8(5), uint8(6),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x13), uint8(0x07),
+		uint32(0x13), uint8(0x07), uint16(0), uint16(0), uint16(0),
 		uint8(0), uint8(6), uint8(5),
 		"read", "open", false, false, uint64(0), uint64(0),
-		uint32(0x12), uint8(0x03),
+		uint32(0x12), uint8(0x03), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Allow default with single syscall, both args set
 	f.Add(
 		uint8(8), uint8(4), uint8(4),
 		"read", "read_alt", true, true, uint64(1), uint64(2),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 		uint8(8), uint8(4), uint8(4),
 		"read", "read_alt", true, true, uint64(1), uint64(2),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 	)
 
 	// Notify action on both sides
 	f.Add(
 		uint8(4), uint8(6), uint8(8),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(6), uint8(8),
 		"write", "read", false, false, uint64(0), uint64(0),
-		uint32(0), uint8(0),
+		uint32(0), uint8(0), uint16(0), uint16(0), uint16(0),
 	)
 
 	// All architectures and flags set
 	f.Add(
 		uint8(4), uint8(8), uint8(8),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x7FFFFF), uint8(0x07),
+		uint32(0x7FFFFF), uint8(0x07), uint16(0), uint16(0), uint16(0),
 		uint8(4), uint8(8), uint8(8),
 		"read", "write", false, false, uint64(0), uint64(0),
-		uint32(0x7FFFFF), uint8(0x07),
+		uint32(0x7FFFFF), uint8(0x07), uint16(0), uint16(0), uint16(0),
+	)
+
+	// ErrnoRet on default and syscalls
+	f.Add(
+		uint8(4), uint8(4), uint8(8),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0), uint16(1), uint16(13), uint16(0),
+		uint8(4), uint8(4), uint8(8),
+		"read", "write", false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0), uint16(2), uint16(42), uint16(0),
 	)
 }
 
@@ -249,11 +277,13 @@ func fuzzMerge(
 	args1L, args2L bool,
 	argVal1L, argVal2L uint64,
 	archMaskL uint32, flagMaskL uint8,
+	defErrnoL, errno1L, errno2L uint16,
 	defR, act1R, act2R uint8,
 	name1R, name2R string,
 	args1R, args2R bool,
 	argVal1R, argVal2R uint64,
 	archMaskR uint32, flagMaskR uint8,
+	defErrnoR, errno1R, errno2R uint16,
 ) {
 	t.Helper()
 
@@ -261,11 +291,13 @@ func fuzzMerge(
 		defL, act1L, act2L, name1L, name2L,
 		args1L, args2L, argVal1L, argVal2L,
 		archMaskL, flagMaskL,
+		defErrnoL, errno1L, errno2L,
 	)
 	right := fuzzProfile(
 		defR, act1R, act2R, name1R, name2R,
 		args1R, args2R, argVal1R, argVal2R,
 		archMaskR, flagMaskR,
+		defErrnoR, errno1R, errno2R,
 	)
 
 	result, err := cfg.merge(left, right)
@@ -419,7 +451,7 @@ func sortArgsByValue(args []specs.LinuxSeccompArg) {
 			return result
 		}
 
-		return cmp.Compare(string(left.Op), string(right.Op))
+		return cmp.Compare(left.Op, right.Op)
 	})
 }
 
@@ -435,19 +467,23 @@ func FuzzIntersect(f *testing.F) {
 		args1L, args2L bool,
 		argVal1L, argVal2L uint64,
 		archMaskL uint32, flagMaskL uint8,
+		defErrnoL, errno1L, errno2L uint16,
 		defR, act1R, act2R uint8,
 		name1R, name2R string,
 		args1R, args2R bool,
 		argVal1R, argVal2R uint64,
 		archMaskR uint32, flagMaskR uint8,
+		defErrnoR, errno1R, errno2R uint16,
 	) {
 		fuzzMerge(t, cfg,
 			defL, act1L, act2L, name1L, name2L,
 			args1L, args2L, argVal1L, argVal2L,
 			archMaskL, flagMaskL,
+			defErrnoL, errno1L, errno2L,
 			defR, act1R, act2R, name1R, name2R,
 			args1R, args2R, argVal1R, argVal2R,
 			archMaskR, flagMaskR,
+			defErrnoR, errno1R, errno2R,
 		)
 	})
 }
@@ -464,19 +500,23 @@ func FuzzUnion(f *testing.F) {
 		args1L, args2L bool,
 		argVal1L, argVal2L uint64,
 		archMaskL uint32, flagMaskL uint8,
+		defErrnoL, errno1L, errno2L uint16,
 		defR, act1R, act2R uint8,
 		name1R, name2R string,
 		args1R, args2R bool,
 		argVal1R, argVal2R uint64,
 		archMaskR uint32, flagMaskR uint8,
+		defErrnoR, errno1R, errno2R uint16,
 	) {
 		fuzzMerge(t, cfg,
 			defL, act1L, act2L, name1L, name2L,
 			args1L, args2L, argVal1L, argVal2L,
 			archMaskL, flagMaskL,
+			defErrnoL, errno1L, errno2L,
 			defR, act1R, act2R, name1R, name2R,
 			args1R, args2R, argVal1R, argVal2R,
 			archMaskR, flagMaskR,
+			defErrnoR, errno1R, errno2R,
 		)
 	})
 }
@@ -491,21 +531,25 @@ func FuzzDiff(f *testing.F) {
 		args1L, args2L bool,
 		argVal1L, argVal2L uint64,
 		archMaskL uint32, flagMaskL uint8,
+		defErrnoL, errno1L, errno2L uint16,
 		defR, act1R, act2R uint8,
 		name1R, name2R string,
 		args1R, args2R bool,
 		argVal1R, argVal2R uint64,
 		archMaskR uint32, flagMaskR uint8,
+		defErrnoR, errno1R, errno2R uint16,
 	) {
 		left := fuzzProfile(
 			defL, act1L, act2L, name1L, name2L,
 			args1L, args2L, argVal1L, argVal2L,
 			archMaskL, flagMaskL,
+			defErrnoL, errno1L, errno2L,
 		)
 		right := fuzzProfile(
 			defR, act1R, act2R, name1R, name2R,
 			args1R, args2R, argVal1R, argVal2R,
 			archMaskR, flagMaskR,
+			defErrnoR, errno1R, errno2R,
 		)
 
 		diff, err := seccomp.Diff(left, right)
@@ -540,56 +584,39 @@ func FuzzDiff(f *testing.F) {
 
 func FuzzValidateStrict(f *testing.F) {
 	f.Add(
-		uint8(4),
-		uint8(8),
-		uint8(8),
-		"read",
-		"write",
-		false,
-		false,
-		uint64(0),
-		uint64(0),
-		uint32(0),
-		uint8(0),
+		uint8(4), uint8(8), uint8(8),
+		"read", "write",
+		false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0),
+		uint16(0), uint16(0), uint16(0),
 	)
 	f.Add(
-		uint8(4),
-		uint8(8),
-		uint8(3),
-		"read",
-		"open",
-		true,
-		false,
-		uint64(65536),
-		uint64(0),
-		uint32(0x02),
-		uint8(0x01),
+		uint8(4), uint8(8), uint8(3),
+		"read", "open",
+		true, false, uint64(65536), uint64(0),
+		uint32(0x02), uint8(0x01),
+		uint16(0), uint16(0), uint16(0),
 	)
 	f.Add(
-		uint8(0),
-		uint8(7),
-		uint8(8),
-		"mmap",
-		"brk",
-		true,
-		false,
-		uint64(0xFFFF),
-		uint64(0),
-		uint32(0x13),
-		uint8(0x07),
+		uint8(0), uint8(7), uint8(8),
+		"mmap", "brk",
+		true, false, uint64(0xFFFF), uint64(0),
+		uint32(0x13), uint8(0x07),
+		uint16(0), uint16(0), uint16(0),
 	)
 	f.Add(
-		uint8(0),
-		uint8(5),
-		uint8(6),
-		"read",
-		"write",
-		false,
-		false,
-		uint64(0),
-		uint64(0),
-		uint32(0),
-		uint8(0),
+		uint8(0), uint8(5), uint8(6),
+		"read", "write",
+		false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0),
+		uint16(0), uint16(0), uint16(0),
+	)
+	f.Add(
+		uint8(4), uint8(4), uint8(8),
+		"read", "write",
+		false, false, uint64(0), uint64(0),
+		uint32(0), uint8(0),
+		uint16(1), uint16(13), uint16(42),
 	)
 
 	f.Fuzz(func(
@@ -599,12 +626,14 @@ func FuzzValidateStrict(f *testing.F) {
 		hasArgs1, hasArgs2 bool,
 		argVal1, argVal2 uint64,
 		archMask uint32, flagMask uint8,
+		defErrno, errno1, errno2 uint16,
 	) {
 		profile := fuzzProfile(
 			defIdx, act1Idx, act2Idx,
 			name1, name2, hasArgs1, hasArgs2,
 			argVal1, argVal2,
 			archMask, flagMask,
+			defErrno, errno1, errno2,
 		)
 
 		_ = seccomp.ValidateStrict(profile)

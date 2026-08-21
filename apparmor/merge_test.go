@@ -1601,6 +1601,33 @@ func TestNormalizeGlobPathPrefix(t *testing.T) {
 	}
 }
 
+func TestDeduplicateCapabilities(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{capNetAdmin, capSysTime, capNetAdmin, capSysTime},
+		},
+	}
+
+	result, err := apparmor.Intersect(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{capNetAdmin, capSysTime}
+
+	if !slices.Equal(result.Capabilities.AllowedCapabilities, want) {
+		t.Errorf(
+			"capabilities = %v, want %v (deduplicated)",
+			result.Capabilities.AllowedCapabilities, want,
+		)
+	}
+}
+
 func TestNormalizeGlobPathEmptyPrefix(t *testing.T) {
 	t.Parallel()
 

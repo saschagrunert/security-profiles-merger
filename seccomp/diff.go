@@ -320,14 +320,11 @@ func equalSyscallEntrySlices(left, right []SyscallEntry) bool {
 		return false
 	}
 
-	sortedLeft := slices.Clone(left)
-	sortedRight := slices.Clone(right)
+	sortSyscallEntries(left)
+	sortSyscallEntries(right)
 
-	sortSyscallEntries(sortedLeft)
-	sortSyscallEntries(sortedRight)
-
-	for idx := range sortedLeft {
-		if !equalSyscallEntry(sortedLeft[idx], sortedRight[idx]) {
+	for idx := range left {
+		if !equalSyscallEntry(left[idx], right[idx]) {
 			return false
 		}
 	}
