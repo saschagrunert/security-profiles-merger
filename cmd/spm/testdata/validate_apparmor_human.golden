@@ -1,0 +1,1 @@
+Profile{exec:/usr/bin/bash lib:/usr/lib/libc.so r:/etc/config caps:NET_ADMIN,SYS_TIME}

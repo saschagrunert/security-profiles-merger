@@ -138,16 +138,14 @@ type apparmorPath struct {
 }
 
 type pathSet struct {
-	paths      []apparmorPath
-	literals   map[string]struct{}
-	literalIdx map[string]int
+	globs    []apparmorPath
+	literals map[string]struct{}
 }
 
 func newPathSet(patterns []string) pathSet {
 	set := pathSet{
-		paths:      make([]apparmorPath, 0, len(patterns)),
-		literals:   make(map[string]struct{}, len(patterns)),
-		literalIdx: make(map[string]int, len(patterns)),
+		globs:    make([]apparmorPath, 0, len(patterns)),
+		literals: make(map[string]struct{}, len(patterns)),
 	}
 
 	seen := make(map[string]struct{}, len(patterns))
@@ -159,114 +157,69 @@ func newPathSet(patterns []string) pathSet {
 
 		seen[pat] = struct{}{}
 
-		expr := globToRegex(pat)
-		idx := len(set.paths)
-
-		set.paths = append(set.paths, apparmorPath{pattern: pat, expr: expr})
-
-		if !globTokenRe.MatchString(pat) {
+		if globTokenRe.MatchString(pat) {
+			set.globs = append(set.globs, apparmorPath{
+				pattern: pat, expr: globToRegex(pat),
+			})
+		} else {
 			set.literals[pat] = struct{}{}
-			set.literalIdx[pat] = idx
 		}
 	}
 
 	return set
 }
 
-// findMatch returns the index of the first entry whose regex matches path,
-// or whose pattern equals path exactly. Only checks forward matching
-// (existing pattern covers incoming path).
-func (set *pathSet) findMatch(path string) int {
-	if idx, ok := set.literalIdx[path]; ok {
-		return idx
+func (set *pathSet) matches(path string) bool {
+	if _, ok := set.literals[path]; ok {
+		return true
 	}
 
-	for idx, entry := range set.paths {
+	for _, entry := range set.globs {
 		if entry.expr.MatchString(path) {
-			return idx
+			return true
 		}
 	}
 
-	return -1
-}
-
-func (set *pathSet) matches(path string) bool {
-	return set.findMatch(path) >= 0
-}
-
-func (set *pathSet) removeAt(idx int) {
-	removed := set.paths[idx]
-	if !globTokenRe.MatchString(removed.pattern) {
-		delete(set.literals, removed.pattern)
-		delete(set.literalIdx, removed.pattern)
-	}
-
-	set.paths = slices.Delete(set.paths, idx, idx+1)
-	set.rebuildLiteralIdx()
+	return false
 }
 
 func (set *pathSet) add(pattern string) {
-	expr := globToRegex(pattern)
+	if globTokenRe.MatchString(pattern) {
+		expr := globToRegex(pattern)
 
-	// Prune exact duplicates and non-glob entries subsumed by the new
-	// pattern. Glob-vs-glob subsumption is not attempted because matching
-	// a glob pattern string against another glob's regex does not reliably
-	// indicate language inclusion.
-	prevLen := len(set.paths)
+		// Remove exact duplicate glob.
+		set.globs = slices.DeleteFunc(set.globs, func(existing apparmorPath) bool {
+			return existing.pattern == pattern
+		})
 
-	set.paths = slices.DeleteFunc(set.paths, func(existing apparmorPath) bool {
-		if existing.pattern == pattern {
-			return true
+		// Prune literals subsumed by this glob. Glob-vs-glob
+		// subsumption is not attempted because matching a glob
+		// pattern string against another glob's regex does not
+		// reliably indicate language inclusion.
+		for lit := range set.literals {
+			if expr.MatchString(lit) {
+				delete(set.literals, lit)
+			}
 		}
 
-		pruned := !globTokenRe.MatchString(existing.pattern) &&
-			expr.MatchString(existing.pattern)
-		if pruned {
-			delete(set.literals, existing.pattern)
-		}
-
-		return pruned
-	})
-
-	deleted := len(set.paths) < prevLen
-
-	set.paths = append(set.paths, apparmorPath{
-		pattern: pattern,
-		expr:    expr,
-	})
-
-	isLiteral := !globTokenRe.MatchString(pattern)
-	if isLiteral {
+		set.globs = append(set.globs, apparmorPath{
+			pattern: pattern, expr: expr,
+		})
+	} else {
 		set.literals[pattern] = struct{}{}
-	}
-
-	if deleted {
-		set.rebuildLiteralIdx()
-	} else if isLiteral {
-		set.literalIdx[pattern] = len(set.paths) - 1
-	}
-}
-
-func (set *pathSet) rebuildLiteralIdx() {
-	clear(set.literalIdx)
-
-	for idx, entry := range set.paths {
-		if _, ok := set.literals[entry.pattern]; ok {
-			set.literalIdx[entry.pattern] = idx
-		}
 	}
 }
 
 func (set *pathSet) popExact(path string) bool {
-	if idx, ok := set.literalIdx[path]; ok {
-		set.removeAt(idx)
+	if _, ok := set.literals[path]; ok {
+		delete(set.literals, path)
 
 		return true
 	}
 
-	for idx, entry := range set.paths {
+	for idx, entry := range set.globs {
 		if entry.pattern == path {
-			set.removeAt(idx)
+			set.globs = slices.Delete(set.globs, idx, idx+1)
 
 			return true
 		}
@@ -280,34 +233,32 @@ func (set *pathSet) popCoveredLiterals(glob string) []string {
 
 	var popped []string
 
-	set.paths = slices.DeleteFunc(set.paths, func(existing apparmorPath) bool {
-		matched := !globTokenRe.MatchString(existing.pattern) &&
-			expr.MatchString(existing.pattern)
-		if matched {
-			delete(set.literals, existing.pattern)
-			delete(set.literalIdx, existing.pattern)
-
-			popped = append(popped, existing.pattern)
+	for lit := range set.literals {
+		if expr.MatchString(lit) {
+			popped = append(popped, lit)
 		}
+	}
 
-		return matched
-	})
-
-	if len(popped) > 0 {
-		set.rebuildLiteralIdx()
+	for _, lit := range popped {
+		delete(set.literals, lit)
 	}
 
 	return popped
 }
 
 func (set *pathSet) patterns() []string {
-	if len(set.paths) == 0 {
+	total := len(set.globs) + len(set.literals)
+	if total == 0 {
 		return nil
 	}
 
-	ret := make([]string, 0, len(set.paths))
+	ret := make([]string, 0, total)
 
-	for _, entry := range set.paths {
+	for lit := range set.literals {
+		ret = append(ret, lit)
+	}
+
+	for _, entry := range set.globs {
 		ret = append(ret, entry.pattern)
 	}
 

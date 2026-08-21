@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,10 +35,11 @@ func TestGolden(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		args     []string
-		wantCode int
-		golden   string
+		name      string
+		args      []string
+		stdinFile string
+		wantCode  int
+		golden    string
 	}{
 		{
 			name: "diff seccomp human",
@@ -49,8 +52,9 @@ func TestGolden(t *testing.T) {
 				testdataSeccompA,
 				testdataSeccompB,
 			},
-			wantCode: exitDiff,
-			golden:   "testdata/diff_seccomp_human.golden",
+			stdinFile: "",
+			wantCode:  exitDiff,
+			golden:    "testdata/diff_seccomp_human.golden",
 		},
 		{
 			name: "diff apparmor human",
@@ -63,8 +67,9 @@ func TestGolden(t *testing.T) {
 				"testdata/apparmor_a.json",
 				"testdata/apparmor_b.json",
 			},
-			wantCode: exitDiff,
-			golden:   "testdata/diff_apparmor_human.golden",
+			stdinFile: "",
+			wantCode:  exitDiff,
+			golden:    "testdata/diff_apparmor_human.golden",
 		},
 		{
 			name: "diff landlock human",
@@ -77,8 +82,9 @@ func TestGolden(t *testing.T) {
 				"testdata/landlock_a.json",
 				"testdata/landlock_b.json",
 			},
-			wantCode: exitDiff,
-			golden:   "testdata/diff_landlock_human.golden",
+			stdinFile: "",
+			wantCode:  exitDiff,
+			golden:    "testdata/diff_landlock_human.golden",
 		},
 		{
 			name: "diff seccomp json",
@@ -89,8 +95,9 @@ func TestGolden(t *testing.T) {
 				testdataSeccompA,
 				testdataSeccompB,
 			},
-			wantCode: exitDiff,
-			golden:   "testdata/diff_seccomp_json.golden",
+			stdinFile: "",
+			wantCode:  exitDiff,
+			golden:    "testdata/diff_seccomp_json.golden",
 		},
 		{
 			name: "diff seccomp equal",
@@ -103,8 +110,107 @@ func TestGolden(t *testing.T) {
 				testdataSeccompA,
 				testdataSeccompA,
 			},
-			wantCode: 0,
-			golden:   "testdata/diff_seccomp_equal.golden",
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/diff_seccomp_equal.golden",
+		},
+		{
+			name: "merge seccomp intersect",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeSeccomp,
+				flagStrategy,
+				strategyIntersect,
+				testdataSeccompA,
+				testdataSeccompB,
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/merge_seccomp_intersect.golden",
+		},
+		{
+			name: "merge apparmor union",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeAppArmor,
+				flagStrategy,
+				strategyUnion,
+				"testdata/apparmor_a.json",
+				"testdata/apparmor_b.json",
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/merge_apparmor_union.golden",
+		},
+		{
+			name: "merge landlock intersect human",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeLandlock,
+				flagStrategy,
+				strategyIntersect,
+				flagFormat,
+				formatHuman,
+				"testdata/landlock_a.json",
+				"testdata/landlock_b.json",
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/merge_landlock_intersect_human.golden",
+		},
+		{
+			name: "merge seccomp union stdin",
+			args: []string{
+				cmdMerge,
+				flagType,
+				typeSeccomp,
+				flagStrategy,
+				strategyUnion,
+			},
+			stdinFile: "testdata/seccomp_stdin.json",
+			wantCode:  0,
+			golden:    "testdata/merge_seccomp_union_stdin.golden",
+		},
+		{
+			name: "validate seccomp",
+			args: []string{
+				cmdValidate,
+				flagType,
+				typeSeccomp,
+				testdataSeccompA,
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/validate_seccomp.golden",
+		},
+		{
+			name: "validate apparmor human",
+			args: []string{
+				cmdValidate,
+				flagType,
+				typeAppArmor,
+				flagFormat,
+				formatHuman,
+				"testdata/apparmor_a.json",
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/validate_apparmor_human.golden",
+		},
+		{
+			name: "validate landlock",
+			args: []string{
+				cmdValidate,
+				flagType,
+				typeLandlock,
+				"testdata/landlock_a.json",
+			},
+			stdinFile: "",
+			wantCode:  0,
+			golden:    "testdata/validate_landlock.golden",
 		},
 	}
 
@@ -112,7 +218,18 @@ func TestGolden(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			code, stdout, _ := runCapture(t, testCase.args, nil)
+			var stdin io.Reader
+
+			if testCase.stdinFile != "" {
+				data, err := os.ReadFile(testCase.stdinFile)
+				if err != nil {
+					t.Fatalf("reading stdin file: %v", err)
+				}
+
+				stdin = bytes.NewReader(data)
+			}
+
+			code, stdout, _ := runCapture(t, testCase.args, stdin)
 			if code != testCase.wantCode {
 				t.Fatalf("exit code = %d, want %d", code, testCase.wantCode)
 			}

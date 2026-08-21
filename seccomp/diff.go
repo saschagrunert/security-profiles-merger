@@ -77,10 +77,7 @@ type StringDiff struct {
 }
 
 // SliceDiff represents added and removed items in a set-like slice.
-type SliceDiff[T comparable] struct {
-	Added   []T `json:"added,omitempty"`
-	Removed []T `json:"removed,omitempty"`
-}
+type SliceDiff[T comparable] = merge.SliceDiff[T]
 
 // SyscallsDiff describes differences in the syscall entries.
 type SyscallsDiff struct {
