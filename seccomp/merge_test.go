@@ -1017,7 +1017,14 @@ func TestMergeDoesNotMutateInputs(t *testing.T) {
 		DefaultAction:   specs.ActErrno,
 		DefaultErrnoRet: uintPtr(1),
 		Syscalls: []specs.LinuxSyscall{
-			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+			{
+				Names:    []string{syscallRead, syscallWrite},
+				Action:   specs.ActAllow,
+				ErrnoRet: uintPtr(42),
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 1, Op: specs.OpEqualTo},
+				},
+			},
 		},
 	}
 
@@ -1030,6 +1037,8 @@ func TestMergeDoesNotMutateInputs(t *testing.T) {
 
 	origLeftNames := slices.Clone(left.Syscalls[0].Names)
 	origDefaultErrnoRet := *left.DefaultErrnoRet
+	origSyscallErrnoRet := *left.Syscalls[0].ErrnoRet
+	origArgs := slices.Clone(left.Syscalls[0].Args)
 
 	result, err := seccomp.Intersect(left, right)
 	if err != nil {
@@ -1037,15 +1046,23 @@ func TestMergeDoesNotMutateInputs(t *testing.T) {
 	}
 
 	if !slices.Equal(left.Syscalls[0].Names, origLeftNames) {
-		t.Error("Intersect mutated first input syscall names")
+		t.Error("Intersect mutated input syscall names")
 	}
 
 	if *left.DefaultErrnoRet != origDefaultErrnoRet {
-		t.Error("Intersect mutated first input DefaultErrnoRet")
+		t.Error("Intersect mutated input DefaultErrnoRet")
 	}
 
 	if result.DefaultErrnoRet == left.DefaultErrnoRet {
 		t.Error("result shares DefaultErrnoRet pointer with input")
+	}
+
+	if *left.Syscalls[0].ErrnoRet != origSyscallErrnoRet {
+		t.Error("Intersect mutated input per-syscall ErrnoRet")
+	}
+
+	if !slices.Equal(left.Syscalls[0].Args, origArgs) {
+		t.Error("Intersect mutated input syscall Args")
 	}
 }
 
@@ -2327,4 +2344,138 @@ func TestNormalizeDuplicateSyscallsLessRestrictiveWins(t *testing.T) {
 	}
 
 	assertSyscallAction(t, result, syscallRead, specs.ActErrno)
+}
+
+func TestUnionUnmatchedSyscallPreservesOtherDefaultErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	errno42 := uint(42)
+	errno99 := uint(99)
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: &errno99,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKillProcess},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: &errno42,
+	}
+
+	result, err := seccomp.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallRead) {
+			if syscall.ErrnoRet == nil {
+				t.Fatal("read ErrnoRet = nil, want 42 (from right's default)")
+			}
+
+			if *syscall.ErrnoRet != 42 {
+				t.Errorf("read ErrnoRet = %d, want 42", *syscall.ErrnoRet)
+			}
+
+			return
+		}
+	}
+
+	t.Fatal("read syscall not found in result")
+}
+
+func TestMergeResultPassesValidation(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: uintPtr(1),
+		Architectures:   []specs.Arch{specs.ArchX86_64},
+		Flags:           []specs.LinuxSeccompFlag{specs.LinuxSeccompFlagLog},
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead, syscallWrite}, Action: specs.ActAllow},
+			{
+				Names:  []string{syscallClone},
+				Action: specs.ActErrno,
+				Args: []specs.LinuxSeccompArg{
+					{Index: 0, Value: 0x10000, Op: specs.OpMaskedEqual},
+				},
+			},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActKillProcess,
+		DefaultErrnoRet: uintPtr(2),
+		Architectures:   []specs.Arch{specs.ArchARM},
+		Flags:           []specs.LinuxSeccompFlag{specs.LinuxSeccompFlagSpecAllow},
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActLog},
+			{Names: []string{syscallOpen}, Action: specs.ActAllow},
+		},
+	}
+
+	for _, testCase := range []struct {
+		name  string
+		merge func(...*specs.LinuxSeccomp) (*specs.LinuxSeccomp, error)
+	}{
+		{"intersect", seccomp.Intersect},
+		{"union", seccomp.Union},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := testCase.merge(left, right)
+			if err != nil {
+				t.Fatalf("merge: %v", err)
+			}
+
+			err = seccomp.Validate(result)
+			if err != nil {
+				t.Errorf("Validate(merged) = %v, want nil", err)
+			}
+
+			err = seccomp.ValidateStrict(result)
+			if err != nil {
+				t.Errorf("ValidateStrict(merged) = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestUnionUnmatchedSyscallElidesWhenErrnoMatchesDefault(t *testing.T) {
+	t.Parallel()
+
+	errno42 := uint(42)
+	errno42b := uint(42)
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: &errno42,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKillProcess},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction:   specs.ActErrno,
+		DefaultErrnoRet: &errno42b,
+	}
+
+	result, err := seccomp.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, syscall := range result.Syscalls {
+		if slices.Contains(syscall.Names, syscallRead) {
+			t.Errorf(
+				"read should be elided (matches default ERRNO(42)), got action=%s",
+				syscall.Action,
+			)
+		}
+	}
 }

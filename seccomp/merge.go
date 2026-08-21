@@ -287,6 +287,7 @@ func mergeSyscalls(
 		entry := mergeSyscallEntry(
 			leftEntry, rightMap[name],
 			left.DefaultAction, right.DefaultAction,
+			left.DefaultErrnoRet, right.DefaultErrnoRet,
 			mergedDefault, mergedDefaultErrnoRet, strategy,
 		)
 		if entry != nil {
@@ -302,6 +303,7 @@ func mergeSyscalls(
 		entry := mergeSyscallEntry(
 			nil, rightEntry,
 			left.DefaultAction, right.DefaultAction,
+			left.DefaultErrnoRet, right.DefaultErrnoRet,
 			mergedDefault, mergedDefaultErrnoRet, strategy,
 		)
 		if entry != nil {
@@ -314,7 +316,9 @@ func mergeSyscalls(
 
 func mergeSyscallEntry(
 	leftEntry, rightEntry *specs.LinuxSyscall,
-	leftDefault, rightDefault, mergedDefault specs.LinuxSeccompAction,
+	leftDefault, rightDefault specs.LinuxSeccompAction,
+	leftDefaultErrnoRet, rightDefaultErrnoRet *uint,
+	mergedDefault specs.LinuxSeccompAction,
 	mergedDefaultErrnoRet *uint,
 	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
@@ -327,11 +331,13 @@ func mergeSyscallEntry(
 		)
 	case leftEntry != nil:
 		return mergeUnmatchedSyscall(
-			leftEntry, rightDefault, mergedDefault, mergedDefaultErrnoRet, pick,
+			leftEntry, rightDefault, rightDefaultErrnoRet,
+			mergedDefault, mergedDefaultErrnoRet, pick,
 		)
 	default:
 		return mergeUnmatchedSyscall(
-			rightEntry, leftDefault, mergedDefault, mergedDefaultErrnoRet, pick,
+			rightEntry, leftDefault, leftDefaultErrnoRet,
+			mergedDefault, mergedDefaultErrnoRet, pick,
 		)
 	}
 }
@@ -354,21 +360,21 @@ func mergeMatchedSyscall(
 
 func mergeUnmatchedSyscall(
 	entry *specs.LinuxSyscall,
-	otherDefault, mergedDefault specs.LinuxSeccompAction,
+	otherDefault specs.LinuxSeccompAction,
+	otherDefaultErrnoRet *uint,
+	mergedDefault specs.LinuxSeccompAction,
 	mergedDefaultErrnoRet *uint,
 	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *specs.LinuxSyscall {
 	effective := pick(entry.Action, otherDefault)
 
-	// When the picked action came from the other side's default,
-	// clear ErrnoRet because the default action's ErrnoRet is
-	// already captured in the profile-level DefaultErrnoRet.
-	// Safe to use actionsEquivalent here: pick() returns entry.Action
-	// when levels tie, and the only same-level pair (ActKill/ActKillThread)
-	// ignores ErrnoRet.
+	// pick() returns entry.Action when levels tie, and the only
+	// same-level pair (ActKill/ActKillThread) ignores ErrnoRet.
 	var errnoRet *uint
 	if actionsEquivalent(effective, entry.Action) {
 		errnoRet = merge.ClonePtr(entry.ErrnoRet)
+	} else {
+		errnoRet = merge.ClonePtr(otherDefaultErrnoRet)
 	}
 
 	if !actionsEquivalent(effective, mergedDefault) ||

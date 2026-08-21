@@ -1628,6 +1628,58 @@ func TestDeduplicateCapabilities(t *testing.T) {
 	}
 }
 
+func TestUnionPopExactRemovesGlobPattern(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  []string{"/var/log/**"},
+			WriteOnlyPaths: nil,
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: &apparmor.FilesystemRules{
+			ReadOnlyPaths:  nil,
+			WriteOnlyPaths: []string{"/var/log/**"},
+			ReadWritePaths: nil,
+		},
+		Network:      nil,
+		Capabilities: nil,
+	}
+
+	result, err := apparmor.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Filesystem.ReadOnlyPaths) != 0 {
+		t.Errorf(
+			"ReadOnlyPaths = %v, want empty (glob promoted to ReadWrite)",
+			result.Filesystem.ReadOnlyPaths,
+		)
+	}
+
+	if len(result.Filesystem.WriteOnlyPaths) != 0 {
+		t.Errorf(
+			"WriteOnlyPaths = %v, want empty (glob promoted to ReadWrite)",
+			result.Filesystem.WriteOnlyPaths,
+		)
+	}
+
+	if !slices.Contains(result.Filesystem.ReadWritePaths, "/var/log/**") {
+		t.Errorf(
+			"ReadWritePaths = %v, want [/var/log/**]",
+			result.Filesystem.ReadWritePaths,
+		)
+	}
+}
+
 func TestNormalizeGlobPathEmptyPrefix(t *testing.T) {
 	t.Parallel()
 

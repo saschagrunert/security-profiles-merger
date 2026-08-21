@@ -1076,6 +1076,8 @@ func FuzzLandlockDiff(f *testing.F) {
 			reverse.HandledAccessNet,
 		)
 		assertRightsDiffSwapped(t, "Scoped", diff.Scoped, reverse.Scoped)
+		assertRulesDiffSwapped(t, "PathRules", diff.PathRules, reverse.PathRules)
+		assertNetRulesDiffSwapped(t, diff.NetRules, reverse.NetRules)
 
 		selfDiff, err := landlock.Diff(left, left)
 		if err != nil {
@@ -1149,5 +1151,67 @@ func assertRightsDiffSwapped[T comparable](
 
 	if !slices.Equal(fwd.Removed, rev.Added) {
 		t.Errorf("%s: forward Removed != reverse Added", label)
+	}
+}
+
+func assertRulesDiffSwapped(
+	t *testing.T, label string,
+	fwd, rev *landlock.PathRulesDiff,
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Errorf("%s: nil mismatch", label)
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if len(fwd.Added) != len(rev.Removed) {
+		t.Errorf(
+			"%s: forward Added count %d != reverse Removed count %d",
+			label, len(fwd.Added), len(rev.Removed),
+		)
+	}
+
+	if len(fwd.Removed) != len(rev.Added) {
+		t.Errorf(
+			"%s: forward Removed count %d != reverse Added count %d",
+			label, len(fwd.Removed), len(rev.Added),
+		)
+	}
+}
+
+func assertNetRulesDiffSwapped(
+	t *testing.T,
+	fwd, rev *landlock.NetRulesDiff,
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Error("NetRules: nil mismatch")
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if len(fwd.Added) != len(rev.Removed) {
+		t.Errorf(
+			"NetRules: forward Added count %d != reverse Removed count %d",
+			len(fwd.Added), len(rev.Removed),
+		)
+	}
+
+	if len(fwd.Removed) != len(rev.Added) {
+		t.Errorf(
+			"NetRules: forward Removed count %d != reverse Added count %d",
+			len(fwd.Removed), len(rev.Added),
+		)
 	}
 }
