@@ -564,12 +564,15 @@ func FuzzDiff(f *testing.F) {
 			t.Fatal(err)
 		}
 
+		seccomp.FormatDiff(reverse)
+
 		if diff.Equal != reverse.Equal {
 			t.Error("Diff(L,R).Equal != Diff(R,L).Equal")
 		}
 
 		assertSliceDiffSwapped(t, "Architectures", diff.Architectures, reverse.Architectures)
 		assertSliceDiffSwapped(t, "Flags", diff.Flags, reverse.Flags)
+		assertSyscallsDiffSwapped(t, diff.Syscalls, reverse.Syscalls)
 
 		selfDiff, err := seccomp.Diff(left, left)
 		if err != nil {
@@ -662,5 +665,35 @@ func assertSliceDiffSwapped[T comparable](
 
 	if !slices.Equal(fwd.Removed, rev.Added) {
 		t.Errorf("%s: forward Removed != reverse Added", label)
+	}
+}
+
+func assertSyscallsDiffSwapped(
+	t *testing.T, fwd, rev *seccomp.SyscallsDiff,
+) {
+	t.Helper()
+
+	if (fwd == nil) != (rev == nil) {
+		t.Error("Syscalls: nil mismatch between forward and reverse diff")
+
+		return
+	}
+
+	if fwd == nil {
+		return
+	}
+
+	if len(fwd.Added) != len(rev.Removed) {
+		t.Errorf(
+			"Syscalls: forward Added count %d != reverse Removed count %d",
+			len(fwd.Added), len(rev.Removed),
+		)
+	}
+
+	if len(fwd.Removed) != len(rev.Added) {
+		t.Errorf(
+			"Syscalls: forward Removed count %d != reverse Added count %d",
+			len(fwd.Removed), len(rev.Added),
+		)
 	}
 }

@@ -233,6 +233,32 @@ func BenchmarkFormatProfile(b *testing.B) {
 	}
 }
 
+func BenchmarkUnionSyscalls(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfile(numSyscalls).Syscalls
+		right := buildProfile(numSyscalls).Syscalls
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				_ = seccomp.UnionSyscalls(left, right)
+			}
+		})
+	}
+}
+
+func BenchmarkIntersectSyscalls(b *testing.B) {
+	for _, numSyscalls := range []int{10, 50, 200} {
+		left := buildProfile(numSyscalls).Syscalls
+		right := buildProfile(numSyscalls).Syscalls
+
+		b.Run(fmt.Sprintf("syscalls=%d", numSyscalls), func(b *testing.B) {
+			for range b.N {
+				_ = seccomp.IntersectSyscalls(left, right)
+			}
+		})
+	}
+}
+
 func BenchmarkIntersectDisjoint(b *testing.B) {
 	for _, numSyscalls := range []int{10, 50, 200} {
 		left := buildProfile(numSyscalls)
