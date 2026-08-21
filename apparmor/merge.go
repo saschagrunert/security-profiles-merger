@@ -223,11 +223,11 @@ func (intersectStrategy) mergePaths(left, right []string) []string {
 
 func (intersectStrategy) mergeBool(left, right *bool) *bool {
 	if left == nil {
-		return copyBool(right)
+		return merge.ClonePtr(right)
 	}
 
 	if right == nil {
-		return copyBool(left)
+		return merge.ClonePtr(left)
 	}
 
 	val := *left && *right
@@ -329,11 +329,11 @@ func (unionStrategy) mergePaths(left, right []string) []string {
 
 func (unionStrategy) mergeBool(left, right *bool) *bool {
 	if left == nil {
-		return copyBool(right)
+		return merge.ClonePtr(right)
 	}
 
 	if right == nil {
-		return copyBool(left)
+		return merge.ClonePtr(left)
 	}
 
 	val := *left || *right
@@ -410,13 +410,15 @@ func addReadOnlyPaths(
 			continue
 		}
 
-		if !globTokenRe.MatchString(path) && writeSet.matches(path) {
+		isGlob := globTokenRe.MatchString(path)
+
+		if !isGlob && writeSet.matches(path) {
 			rwSet.add(path)
 
 			continue
 		}
 
-		if globTokenRe.MatchString(path) {
+		if isGlob {
 			promoteCoveredLiterals(path, writeSet, rwSet)
 		}
 
@@ -439,13 +441,15 @@ func addWriteOnlyPaths(
 			continue
 		}
 
-		if !globTokenRe.MatchString(path) && readSet.matches(path) {
+		isGlob := globTokenRe.MatchString(path)
+
+		if !isGlob && readSet.matches(path) {
 			rwSet.add(path)
 
 			continue
 		}
 
-		if globTokenRe.MatchString(path) {
+		if isGlob {
 			promoteCoveredLiterals(path, readSet, rwSet)
 		}
 
@@ -522,16 +526,6 @@ func collapseFsPerms(perms map[string]fsPermission) *FilesystemRules {
 	}
 }
 
-func copyBool(boolVal *bool) *bool {
-	if boolVal == nil {
-		return nil
-	}
-
-	val := *boolVal
-
-	return &val
-}
-
 func cloneProfile(profile *Profile) *Profile {
 	clone := &Profile{
 		Executable:   nil,
@@ -576,7 +570,7 @@ func cloneFilesystem(fsRules *FilesystemRules) *FilesystemRules {
 
 func cloneNetwork(network *NetworkRules) *NetworkRules {
 	clone := &NetworkRules{
-		AllowRaw:  copyBool(network.AllowRaw),
+		AllowRaw:  merge.ClonePtr(network.AllowRaw),
 		Protocols: nil,
 	}
 
@@ -589,8 +583,8 @@ func cloneNetwork(network *NetworkRules) *NetworkRules {
 
 func cloneProtocols(proto *AllowedProtocols) *AllowedProtocols {
 	return &AllowedProtocols{
-		AllowTCP: copyBool(proto.AllowTCP),
-		AllowUDP: copyBool(proto.AllowUDP),
+		AllowTCP: merge.ClonePtr(proto.AllowTCP),
+		AllowUDP: merge.ClonePtr(proto.AllowUDP),
 	}
 }
 
@@ -619,47 +613,25 @@ func normalizeProfile(profile *Profile) *Profile {
 
 func deduplicateProfile(profile *Profile) {
 	if profile.Executable != nil {
-		profile.Executable.AllowedExecutables = deduplicatePaths(
+		profile.Executable.AllowedExecutables = merge.DeduplicateSlice(
 			profile.Executable.AllowedExecutables,
 		)
-		profile.Executable.AllowedLibraries = deduplicatePaths(
+		profile.Executable.AllowedLibraries = merge.DeduplicateSlice(
 			profile.Executable.AllowedLibraries,
 		)
 	}
 
 	if profile.Filesystem != nil {
-		profile.Filesystem.ReadOnlyPaths = deduplicatePaths(
+		profile.Filesystem.ReadOnlyPaths = merge.DeduplicateSlice(
 			profile.Filesystem.ReadOnlyPaths,
 		)
-		profile.Filesystem.WriteOnlyPaths = deduplicatePaths(
+		profile.Filesystem.WriteOnlyPaths = merge.DeduplicateSlice(
 			profile.Filesystem.WriteOnlyPaths,
 		)
-		profile.Filesystem.ReadWritePaths = deduplicatePaths(
+		profile.Filesystem.ReadWritePaths = merge.DeduplicateSlice(
 			profile.Filesystem.ReadWritePaths,
 		)
 	}
-}
-
-func deduplicatePaths(paths []string) []string {
-	if len(paths) == 0 {
-		return paths
-	}
-
-	seen := make(map[string]struct{}, len(paths))
-
-	result := paths[:0]
-
-	for _, path := range paths {
-		if _, ok := seen[path]; ok {
-			continue
-		}
-
-		seen[path] = struct{}{}
-
-		result = append(result, path)
-	}
-
-	return result
 }
 
 func normalizeGlobPath(path string) string {

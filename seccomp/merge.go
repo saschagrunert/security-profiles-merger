@@ -114,16 +114,18 @@ func mergeTwo(
 ) *specs.LinuxSeccomp {
 	pick := strategy.pick
 
+	defaultErrnoRet := mergeErrnoRet(
+		left.DefaultErrnoRet,
+		right.DefaultErrnoRet,
+		left.DefaultAction,
+		right.DefaultAction,
+		pick,
+	)
+
 	merged := &specs.LinuxSeccomp{
-		DefaultAction: pick(left.DefaultAction, right.DefaultAction),
-		DefaultErrnoRet: mergeErrnoRet(
-			left.DefaultErrnoRet,
-			right.DefaultErrnoRet,
-			left.DefaultAction,
-			right.DefaultAction,
-			pick,
-		),
-		Syscalls:         mergeSyscalls(left, right, strategy),
+		DefaultAction:    pick(left.DefaultAction, right.DefaultAction),
+		DefaultErrnoRet:  defaultErrnoRet,
+		Syscalls:         mergeSyscalls(left, right, strategy, defaultErrnoRet),
 		ListenerPath:     left.ListenerPath,
 		ListenerMetadata: left.ListenerMetadata,
 	}
@@ -237,9 +239,7 @@ func cloneSyscall(syscall *specs.LinuxSyscall) specs.LinuxSyscall {
 		Args:   slices.Clone(syscall.Args),
 	}
 
-	if syscall.ErrnoRet != nil {
-		clone.ErrnoRet = copyErrnoRet(syscall.ErrnoRet)
-	}
+	clone.ErrnoRet = merge.ClonePtr(syscall.ErrnoRet)
 
 	return clone
 }
@@ -282,6 +282,7 @@ func normalizeSyscalls(
 func mergeSyscalls(
 	left, right *specs.LinuxSeccomp,
 	strategy mergeStrategy,
+	mergedDefaultErrnoRet *uint,
 ) []specs.LinuxSyscall {
 	pick := strategy.pick
 	leftMap := normalizeSyscalls(left, strategy)
@@ -295,7 +296,7 @@ func mergeSyscalls(
 		entry := mergeSyscallEntry(
 			leftEntry, rightMap[name],
 			left.DefaultAction, right.DefaultAction,
-			mergedDefault, strategy,
+			mergedDefault, mergedDefaultErrnoRet, strategy,
 		)
 		if entry != nil {
 			result = append(result, *entry)
@@ -310,7 +311,7 @@ func mergeSyscalls(
 		entry := mergeSyscallEntry(
 			nil, rightEntry,
 			left.DefaultAction, right.DefaultAction,
-			mergedDefault, strategy,
+			mergedDefault, mergedDefaultErrnoRet, strategy,
 		)
 		if entry != nil {
 			result = append(result, *entry)
@@ -323,27 +324,37 @@ func mergeSyscalls(
 func mergeSyscallEntry(
 	leftEntry, rightEntry *specs.LinuxSyscall,
 	leftDefault, rightDefault, mergedDefault specs.LinuxSeccompAction,
+	mergedDefaultErrnoRet *uint,
 	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
 	pick := strategy.pick
 
 	switch {
 	case leftEntry != nil && rightEntry != nil:
-		return mergeMatchedSyscall(leftEntry, rightEntry, mergedDefault, strategy)
+		return mergeMatchedSyscall(
+			leftEntry, rightEntry, mergedDefault, mergedDefaultErrnoRet, strategy,
+		)
 	case leftEntry != nil:
-		return mergeUnmatchedSyscall(leftEntry, rightDefault, mergedDefault, pick)
+		return mergeUnmatchedSyscall(
+			leftEntry, rightDefault, mergedDefault, mergedDefaultErrnoRet, pick,
+		)
 	default:
-		return mergeUnmatchedSyscall(rightEntry, leftDefault, mergedDefault, pick)
+		return mergeUnmatchedSyscall(
+			rightEntry, leftDefault, mergedDefault, mergedDefaultErrnoRet, pick,
+		)
 	}
 }
 
 func mergeMatchedSyscall(
 	left, right *specs.LinuxSyscall,
 	mergedDefault specs.LinuxSeccompAction,
+	mergedDefaultErrnoRet *uint,
 	strategy mergeStrategy,
 ) *specs.LinuxSyscall {
 	merged := pickSyscall(left, right, strategy)
-	if !actionsEquivalent(merged.Action, mergedDefault) || len(merged.Args) > 0 {
+	if !actionsEquivalent(merged.Action, mergedDefault) ||
+		len(merged.Args) > 0 ||
+		!equalUintPtr(merged.ErrnoRet, mergedDefaultErrnoRet) {
 		return merged
 	}
 
@@ -353,21 +364,25 @@ func mergeMatchedSyscall(
 func mergeUnmatchedSyscall(
 	entry *specs.LinuxSyscall,
 	otherDefault, mergedDefault specs.LinuxSeccompAction,
+	mergedDefaultErrnoRet *uint,
 	pick func(first, second specs.LinuxSeccompAction) specs.LinuxSeccompAction,
 ) *specs.LinuxSyscall {
 	effective := pick(entry.Action, otherDefault)
-	if !actionsEquivalent(effective, mergedDefault) || len(entry.Args) > 0 {
-		// When the picked action came from the other side's default,
-		// clear ErrnoRet because the default action's ErrnoRet is
-		// already captured in the profile-level DefaultErrnoRet.
-		// Safe to use actionsEquivalent here: pick() returns entry.Action
-		// when levels tie, and the only same-level pair (ActKill/ActKillThread)
-		// ignores ErrnoRet.
-		var errnoRet *uint
-		if actionsEquivalent(effective, entry.Action) {
-			errnoRet = copyErrnoRet(entry.ErrnoRet)
-		}
 
+	// When the picked action came from the other side's default,
+	// clear ErrnoRet because the default action's ErrnoRet is
+	// already captured in the profile-level DefaultErrnoRet.
+	// Safe to use actionsEquivalent here: pick() returns entry.Action
+	// when levels tie, and the only same-level pair (ActKill/ActKillThread)
+	// ignores ErrnoRet.
+	var errnoRet *uint
+	if actionsEquivalent(effective, entry.Action) {
+		errnoRet = merge.ClonePtr(entry.ErrnoRet)
+	}
+
+	if !actionsEquivalent(effective, mergedDefault) ||
+		len(entry.Args) > 0 ||
+		!equalUintPtr(errnoRet, mergedDefaultErrnoRet) {
 		return &specs.LinuxSyscall{
 			Names:    slices.Clone(entry.Names),
 			Action:   effective,
@@ -392,9 +407,9 @@ func pickSyscall(
 	}
 
 	if actionsEquivalent(pickedAction, left.Action) {
-		result.ErrnoRet = copyErrnoRet(left.ErrnoRet)
+		result.ErrnoRet = merge.ClonePtr(left.ErrnoRet)
 	} else {
-		result.ErrnoRet = copyErrnoRet(right.ErrnoRet)
+		result.ErrnoRet = merge.ClonePtr(right.ErrnoRet)
 	}
 
 	args, denied := mergeArgs(left.Args, right.Args, strategy.isIntersect)
@@ -486,7 +501,7 @@ func sortArgs(args []specs.LinuxSeccompArg) {
 		return cmp.Or(
 			cmp.Compare(left.Value, right.Value),
 			cmp.Compare(left.ValueTwo, right.ValueTwo),
-			cmp.Compare(string(left.Op), string(right.Op)),
+			cmp.Compare(left.Op, right.Op),
 		)
 	})
 }
@@ -537,28 +552,24 @@ func mergeErrnoRet(
 	// When both actions are equivalent, leftmost wins unconditionally,
 	// even if left's ErrnoRet is nil (meaning "no errno override").
 	if actionsEquivalent(leftAction, rightAction) {
-		return copyErrnoRet(leftRet)
+		return merge.ClonePtr(leftRet)
 	}
 
 	picked := pick(leftAction, rightAction)
 
 	if actionsEquivalent(picked, leftAction) {
-		return copyErrnoRet(leftRet)
+		return merge.ClonePtr(leftRet)
 	}
 
-	return copyErrnoRet(rightRet)
+	return merge.ClonePtr(rightRet)
 }
 
 func cloneProfile(profile *specs.LinuxSeccomp) *specs.LinuxSeccomp {
 	clone := &specs.LinuxSeccomp{
 		DefaultAction:    profile.DefaultAction,
+		DefaultErrnoRet:  merge.ClonePtr(profile.DefaultErrnoRet),
 		ListenerPath:     profile.ListenerPath,
 		ListenerMetadata: profile.ListenerMetadata,
-	}
-
-	if profile.DefaultErrnoRet != nil {
-		ret := *profile.DefaultErrnoRet
-		clone.DefaultErrnoRet = &ret
 	}
 
 	clone.Architectures = slices.Clone(profile.Architectures)
@@ -570,14 +581,4 @@ func cloneProfile(profile *specs.LinuxSeccomp) *specs.LinuxSeccomp {
 	}
 
 	return clone
-}
-
-func copyErrnoRet(ret *uint) *uint {
-	if ret == nil {
-		return nil
-	}
-
-	val := *ret
-
-	return &val
 }

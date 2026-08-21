@@ -18,6 +18,7 @@ package landlock
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -82,12 +83,26 @@ type NetRuleChange struct {
 }
 
 // Diff compares two Landlock profiles and returns a structured diff.
+// Paths are normalized (via filepath.Clean) and duplicates are removed before
+// comparing, so "/var/log/../data" and "/var/data" are treated as identical.
 // Unlike Intersect and Union, Diff does not validate profiles before comparing.
 // Returns ErrNilProfile if either profile is nil.
 func Diff(left, right *Profile) (*ProfileDiff, error) {
 	if left == nil || right == nil {
 		return nil, ErrNilProfile
 	}
+
+	normLeft := normalizeProfile(left)
+	deduplicatePathRules(normLeft)
+	deduplicateNetRules(normLeft)
+	deduplicateScoped(normLeft)
+	deduplicateHandledAccess(normLeft)
+
+	normRight := normalizeProfile(right)
+	deduplicatePathRules(normRight)
+	deduplicateNetRules(normRight)
+	deduplicateScoped(normRight)
+	deduplicateHandledAccess(normRight)
 
 	diff := &ProfileDiff{
 		Equal:            true,
@@ -98,17 +113,17 @@ func Diff(left, right *Profile) (*ProfileDiff, error) {
 		NetRules:         nil,
 	}
 
-	setRightsDiff(diff, left.HandledAccessFS, right.HandledAccessFS,
+	setRightsDiff(diff, normLeft.HandledAccessFS, normRight.HandledAccessFS,
 		func(r *RightsDiff[FSAccessRight]) { diff.HandledAccessFS = r })
 
-	setRightsDiff(diff, left.HandledAccessNet, right.HandledAccessNet,
+	setRightsDiff(diff, normLeft.HandledAccessNet, normRight.HandledAccessNet,
 		func(r *RightsDiff[NetAccessRight]) { diff.HandledAccessNet = r })
 
-	setRightsDiff(diff, left.Scoped, right.Scoped,
+	setRightsDiff(diff, normLeft.Scoped, normRight.Scoped,
 		func(r *RightsDiff[ScopeRight]) { diff.Scoped = r })
 
-	diffPathRules(diff, left.PathRules, right.PathRules)
-	diffNetRules(diff, left.NetRules, right.NetRules)
+	diffPathRules(diff, normLeft.PathRules, normRight.PathRules)
+	diffNetRules(diff, normLeft.NetRules, normRight.NetRules)
 
 	return diff, nil
 }
@@ -136,7 +151,7 @@ func diffPathRules(
 
 	var pathDiff PathRulesDiff
 
-	leftPaths := sortedPathKeys(leftMap)
+	leftPaths := slices.Sorted(maps.Keys(leftMap))
 
 	for _, path := range leftPaths {
 		if _, ok := rightMap[path]; !ok {
@@ -144,7 +159,7 @@ func diffPathRules(
 		}
 	}
 
-	for _, path := range sortedPathKeys(rightMap) {
+	for _, path := range slices.Sorted(maps.Keys(rightMap)) {
 		if _, ok := leftMap[path]; !ok {
 			pathDiff.Added = append(pathDiff.Added, rightMap[path])
 		}
@@ -167,17 +182,6 @@ func buildPathMap(rules []PathRule) map[string]PathRule {
 	}
 
 	return result
-}
-
-func sortedPathKeys(m map[string]PathRule) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }
 
 func collectPathChanges(
@@ -210,7 +214,7 @@ func diffNetRules(
 
 	var netDiff NetRulesDiff
 
-	leftPorts := sortedPortKeys(leftMap)
+	leftPorts := slices.Sorted(maps.Keys(leftMap))
 
 	for _, port := range leftPorts {
 		if _, ok := rightMap[port]; !ok {
@@ -218,7 +222,7 @@ func diffNetRules(
 		}
 	}
 
-	for _, port := range sortedPortKeys(rightMap) {
+	for _, port := range slices.Sorted(maps.Keys(rightMap)) {
 		if _, ok := leftMap[port]; !ok {
 			netDiff.Added = append(netDiff.Added, rightMap[port])
 		}
@@ -241,17 +245,6 @@ func buildNetMap(rules []NetRule) map[uint16]NetRule {
 	}
 
 	return result
-}
-
-func sortedPortKeys(m map[uint16]NetRule) []uint16 {
-	keys := make([]uint16, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }
 
 func collectNetChanges(

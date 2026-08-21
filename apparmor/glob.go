@@ -327,10 +327,15 @@ func buildFsEntries(perms map[string]fsPermission) []fsPathEntry {
 	entries := make([]fsPathEntry, 0, len(perms))
 
 	for path, perm := range perms {
+		var expr *regexp.Regexp
+		if globTokenRe.MatchString(path) {
+			expr = globToRegex(path)
+		}
+
 		entries = append(entries, fsPathEntry{
 			path: path,
 			perm: perm,
-			expr: globToRegex(path),
+			expr: expr,
 		})
 	}
 

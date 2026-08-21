@@ -230,3 +230,35 @@ func unionSliceLarge[T comparable](left, right []T) []T {
 
 	return result
 }
+
+// ClonePtr returns a shallow copy of the pointed-to value, or nil if ptr is nil.
+func ClonePtr[T any](ptr *T) *T {
+	if ptr == nil {
+		return nil
+	}
+
+	val := *ptr
+
+	return &val
+}
+
+// DeduplicateSlice returns a new slice with duplicate elements removed,
+// preserving the order of first occurrence.
+func DeduplicateSlice[T comparable](items []T) []T {
+	if len(items) == 0 {
+		return items
+	}
+
+	seen := make(map[T]struct{}, len(items))
+
+	var result []T
+
+	for _, item := range items {
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+
+	return result
+}

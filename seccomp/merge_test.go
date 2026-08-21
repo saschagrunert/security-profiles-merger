@@ -2171,3 +2171,63 @@ func TestIntersectSyscallsPreservesArgsFromOneSide(t *testing.T) {
 		t.Errorf("expected args preserved from the constrained side, got %d", len(result[0].Args))
 	}
 }
+
+func TestIntersectPreservesSyscallErrnoRetMatchingDefault(t *testing.T) {
+	t.Parallel()
+
+	result, err := seccomp.Intersect(
+		&specs.LinuxSeccomp{
+			DefaultAction:   specs.ActErrno,
+			DefaultErrnoRet: uintPtr(1),
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(13)},
+			},
+		},
+		&specs.LinuxSeccomp{
+			DefaultAction:   specs.ActErrno,
+			DefaultErrnoRet: uintPtr(1),
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(13)},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Syscalls) != 1 {
+		t.Fatalf("expected 1 syscall entry, got %d", len(result.Syscalls))
+	}
+
+	if result.Syscalls[0].ErrnoRet == nil || *result.Syscalls[0].ErrnoRet != 13 {
+		t.Errorf("ErrnoRet = %v, want 13", result.Syscalls[0].ErrnoRet)
+	}
+}
+
+func TestUnionElidesMatchingDefaultErrnoRet(t *testing.T) {
+	t.Parallel()
+
+	result, err := seccomp.Union(
+		&specs.LinuxSeccomp{
+			DefaultAction:   specs.ActErrno,
+			DefaultErrnoRet: uintPtr(13),
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(13)},
+			},
+		},
+		&specs.LinuxSeccomp{
+			DefaultAction:   specs.ActErrno,
+			DefaultErrnoRet: uintPtr(13),
+			Syscalls: []specs.LinuxSyscall{
+				{Names: []string{syscallRead}, Action: specs.ActErrno, ErrnoRet: uintPtr(13)},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Syscalls) != 0 {
+		t.Errorf("expected 0 syscall entries (matches default), got %d", len(result.Syscalls))
+	}
+}
