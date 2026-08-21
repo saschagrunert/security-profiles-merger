@@ -157,6 +157,8 @@ func mergeProfiles[T any](
 	return writeOutput(result, formatFn(result), format, stdout, stderr)
 }
 
+var errDuplicateStdin = errors.New("stdin (\"-\") can only be specified once")
+
 func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 	if len(paths) == 0 {
 		return readFromStdin(stdin)
@@ -164,8 +166,16 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 
 	var result [][]byte
 
+	stdinUsed := false
+
 	for _, path := range paths {
 		if path == "-" {
+			if stdinUsed {
+				return nil, errDuplicateStdin
+			}
+
+			stdinUsed = true
+
 			items, err := readFromStdin(stdin)
 			if err != nil {
 				return nil, err

@@ -131,8 +131,8 @@ func mergeTwo(
 	}
 
 	if strategy.isIntersect {
-		merged.Architectures = intersectArchitectures(left.Architectures, right.Architectures)
-		merged.Flags = intersectFlags(left.Flags, right.Flags)
+		merged.Architectures = intersectWithEmpty(left.Architectures, right.Architectures)
+		merged.Flags = intersectWithEmpty(left.Flags, right.Flags)
 	} else {
 		merged.Architectures = merge.UnionSlice(left.Architectures, right.Architectures)
 		merged.Flags = merge.UnionSlice(left.Flags, right.Flags)
@@ -141,19 +141,7 @@ func mergeTwo(
 	return merged
 }
 
-func intersectFlags(left, right []specs.LinuxSeccompFlag) []specs.LinuxSeccompFlag {
-	if len(left) == 0 {
-		return slices.Clone(right)
-	}
-
-	if len(right) == 0 {
-		return slices.Clone(left)
-	}
-
-	return merge.IntersectSlice(left, right)
-}
-
-func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
+func intersectWithEmpty[T comparable](left, right []T) []T {
 	if len(left) == 0 {
 		return slices.Clone(right)
 	}
@@ -176,8 +164,8 @@ func intersectArchitectures(left, right []specs.Arch) []specs.Arch {
 // Validate on the enclosing profile first.
 func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 	strategy := mergeStrategy{pick: LessRestrictive, isIntersect: false}
-	leftMap := normalizeSyscallList(left, strategy)
-	rightMap := normalizeSyscallList(right, strategy)
+	leftMap := normalizeSyscallList(left)
+	rightMap := normalizeSyscallList(right)
 
 	result := make([]specs.LinuxSyscall, 0, len(leftMap)+len(rightMap))
 
@@ -214,8 +202,8 @@ func UnionSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 // Validate on the enclosing profile first.
 func IntersectSyscalls(left, right []specs.LinuxSyscall) []specs.LinuxSyscall {
 	strategy := mergeStrategy{pick: MoreRestrictive, isIntersect: true}
-	leftMap := normalizeSyscallList(left, strategy)
-	rightMap := normalizeSyscallList(right, strategy)
+	leftMap := normalizeSyscallList(left)
+	rightMap := normalizeSyscallList(right)
 
 	result := make([]specs.LinuxSyscall, 0, min(len(leftMap), len(rightMap)))
 
@@ -244,10 +232,14 @@ func cloneSyscall(syscall *specs.LinuxSyscall) specs.LinuxSyscall {
 	return clone
 }
 
+// normalizeSyscallList splits multi-name entries into one-name-per-entry and
+// merges duplicates. The most permissive action wins to capture the profile's
+// full permission envelope, regardless of entry ordering.
 func normalizeSyscallList(
 	syscalls []specs.LinuxSyscall,
-	strategy mergeStrategy,
 ) map[string]*specs.LinuxSyscall {
+	withinProfile := mergeStrategy{pick: LessRestrictive, isIntersect: false}
+
 	normalized := make(map[string]*specs.LinuxSyscall)
 
 	for idx := range syscalls {
@@ -257,12 +249,12 @@ func normalizeSyscallList(
 			single := &specs.LinuxSyscall{
 				Names:    []string{name},
 				Action:   entry.Action,
-				ErrnoRet: entry.ErrnoRet,
-				Args:     entry.Args,
+				ErrnoRet: merge.ClonePtr(entry.ErrnoRet),
+				Args:     slices.Clone(entry.Args),
 			}
 
 			if existing, ok := normalized[name]; ok {
-				normalized[name] = pickSyscall(existing, single, strategy)
+				normalized[name] = pickSyscall(existing, single, withinProfile)
 			} else {
 				normalized[name] = single
 			}
@@ -274,9 +266,8 @@ func normalizeSyscallList(
 
 func normalizeSyscalls(
 	profile *specs.LinuxSeccomp,
-	strategy mergeStrategy,
 ) map[string]*specs.LinuxSyscall {
-	return normalizeSyscallList(profile.Syscalls, strategy)
+	return normalizeSyscallList(profile.Syscalls)
 }
 
 func mergeSyscalls(
@@ -285,8 +276,8 @@ func mergeSyscalls(
 	mergedDefaultErrnoRet *uint,
 ) []specs.LinuxSyscall {
 	pick := strategy.pick
-	leftMap := normalizeSyscalls(left, strategy)
-	rightMap := normalizeSyscalls(right, strategy)
+	leftMap := normalizeSyscalls(left)
+	rightMap := normalizeSyscalls(right)
 
 	mergedDefault := pick(left.DefaultAction, right.DefaultAction)
 
@@ -499,6 +490,7 @@ func mergeArgsByIndex(
 func sortArgs(args []specs.LinuxSeccompArg) {
 	slices.SortFunc(args, func(left, right specs.LinuxSeccompArg) int {
 		return cmp.Or(
+			cmp.Compare(left.Index, right.Index),
 			cmp.Compare(left.Value, right.Value),
 			cmp.Compare(left.ValueTwo, right.ValueTwo),
 			cmp.Compare(left.Op, right.Op),
@@ -521,27 +513,30 @@ func groupArgsByIndex(
 // unionArgs combines argument filters from two syscall entries. No args means
 // "match unconditionally", which is already the most permissive state.
 // Unioning with an unconstrained side yields unconstrained.
+//
+// When both sides have identical args the shared filters are preserved.
+// When args differ, the result drops to unconstrained (no args) because
+// OCI seccomp AND-joins args within a single entry and cannot express OR.
+// Dropping args over-approximates in the permissive direction, which is
+// correct for union semantics.
 func unionArgs(
 	leftArgs, rightArgs []specs.LinuxSeccompArg,
 ) ([]specs.LinuxSeccompArg, bool) {
-	if len(leftArgs) == 0 && len(rightArgs) == 0 {
-		return nil, false
-	}
-
 	if len(leftArgs) == 0 || len(rightArgs) == 0 {
 		return nil, false
 	}
 
-	combined := make([]specs.LinuxSeccompArg, 0, len(leftArgs)+len(rightArgs))
-	combined = append(combined, leftArgs...)
+	leftSorted := slices.Clone(leftArgs)
+	rightSorted := slices.Clone(rightArgs)
 
-	for _, rightArg := range rightArgs {
-		if !slices.Contains(leftArgs, rightArg) {
-			combined = append(combined, rightArg)
-		}
+	sortArgs(leftSorted)
+	sortArgs(rightSorted)
+
+	if slices.Equal(leftSorted, rightSorted) {
+		return slices.Clone(leftArgs), false
 	}
 
-	return combined, false
+	return nil, false
 }
 
 func mergeErrnoRet(

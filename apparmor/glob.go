@@ -351,19 +351,16 @@ func matchIntersectPaths(left, right fsPathEntry) string {
 		return left.path
 	}
 
-	leftIsGlob := globTokenRe.MatchString(left.path)
-	rightIsGlob := globTokenRe.MatchString(right.path)
-
 	switch {
-	case !leftIsGlob && rightIsGlob:
+	case left.expr == nil && right.expr != nil:
 		if right.expr.MatchString(left.path) {
 			return left.path
 		}
-	case leftIsGlob && !rightIsGlob:
+	case left.expr != nil && right.expr == nil:
 		if left.expr.MatchString(right.path) {
 			return right.path
 		}
-	case leftIsGlob && rightIsGlob:
+	case left.expr != nil && right.expr != nil:
 		return narrowGlobs(left.path, right.path)
 	}
 

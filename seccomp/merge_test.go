@@ -495,8 +495,11 @@ func TestUnionWithDifferentArgs(t *testing.T) {
 				t.Errorf("clone action = %q, want %q", syscall.Action, specs.ActAllow)
 			}
 
-			if len(syscall.Args) != 2 {
-				t.Errorf("clone args count = %d, want 2 (combined)", len(syscall.Args))
+			if len(syscall.Args) != 0 {
+				t.Errorf(
+					"clone args count = %d, want 0 (union drops args when they differ)",
+					len(syscall.Args),
+				)
 			}
 
 			return
@@ -816,6 +819,9 @@ func TestNormalizeDuplicateSyscalls(t *testing.T) {
 	t.Run("intersect", func(t *testing.T) {
 		t.Parallel()
 
+		// Left has read as both Allow and Log. Normalization picks the
+		// most permissive action to capture the permission envelope,
+		// so left's effective action for read is Allow.
 		left := &specs.LinuxSeccomp{
 			DefaultAction: specs.ActErrno,
 			Syscalls: []specs.LinuxSyscall{
@@ -836,7 +842,7 @@ func TestNormalizeDuplicateSyscalls(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		assertSyscallAction(t, result, syscallRead, specs.ActLog)
+		assertSyscallAction(t, result, syscallRead, specs.ActAllow)
 	})
 
 	t.Run("union", func(t *testing.T) {
@@ -2038,7 +2044,7 @@ func seccompEqualModuloErrnoRet(
 				cmp.Compare(x.Index, y.Index),
 				cmp.Compare(x.Value, y.Value),
 				cmp.Compare(x.ValueTwo, y.ValueTwo),
-				cmp.Compare(string(x.Op), string(y.Op)),
+				cmp.Compare(x.Op, y.Op),
 			)
 		})
 
@@ -2047,7 +2053,7 @@ func seccompEqualModuloErrnoRet(
 				cmp.Compare(x.Index, y.Index),
 				cmp.Compare(x.Value, y.Value),
 				cmp.Compare(x.ValueTwo, y.ValueTwo),
-				cmp.Compare(string(x.Op), string(y.Op)),
+				cmp.Compare(x.Op, y.Op),
 			)
 		})
 
@@ -2230,4 +2236,95 @@ func TestUnionElidesMatchingDefaultErrnoRet(t *testing.T) {
 	if len(result.Syscalls) != 0 {
 		t.Errorf("expected 0 syscall entries (matches default), got %d", len(result.Syscalls))
 	}
+}
+
+func TestUnionSyscallsDropsArgsWhenDifferent(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 1, Op: specs.OpEqualTo}},
+		}},
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 2, Op: specs.OpEqualTo}},
+		}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 0 {
+		t.Errorf(
+			"expected no args (union drops to unconstrained when args differ), got %v",
+			result[0].Args,
+		)
+	}
+}
+
+func TestUnionSyscallsPreservesArgsReorderedByIndex(t *testing.T) {
+	t.Parallel()
+
+	args := []specs.LinuxSeccompArg{
+		{Index: 0, Value: 1, Op: specs.OpEqualTo},
+		{Index: 1, Value: 2, Op: specs.OpEqualTo},
+	}
+	argsReversed := []specs.LinuxSeccompArg{
+		{Index: 1, Value: 2, Op: specs.OpEqualTo},
+		{Index: 0, Value: 1, Op: specs.OpEqualTo},
+	}
+
+	result := seccomp.UnionSyscalls(
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   args,
+		}},
+		[]specs.LinuxSyscall{{
+			Names:  []string{syscallRead},
+			Action: specs.ActAllow,
+			Args:   argsReversed,
+		}},
+	)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+
+	if len(result[0].Args) != 2 {
+		t.Errorf(
+			"expected 2 args (identical set, different order), got %d",
+			len(result[0].Args),
+		)
+	}
+}
+
+func TestNormalizeDuplicateSyscallsLessRestrictiveWins(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKillProcess,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno},
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKillProcess,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActErrno},
+		},
+	}
+
+	result, err := seccomp.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertSyscallAction(t, result, syscallRead, specs.ActErrno)
 }

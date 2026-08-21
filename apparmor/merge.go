@@ -273,7 +273,7 @@ func splitGlobEntries(entries []fsPathEntry) ([]fsPathEntry, []fsPathEntry) {
 	var globs, literals []fsPathEntry
 
 	for _, entry := range entries {
-		if globTokenRe.MatchString(entry.path) {
+		if entry.expr != nil {
 			globs = append(globs, entry)
 		} else {
 			literals = append(literals, entry)
@@ -630,6 +630,12 @@ func deduplicateProfile(profile *Profile) {
 		)
 		profile.Filesystem.ReadWritePaths = merge.DeduplicateSlice(
 			profile.Filesystem.ReadWritePaths,
+		)
+	}
+
+	if profile.Capabilities != nil {
+		profile.Capabilities.AllowedCapabilities = merge.DeduplicateSlice(
+			profile.Capabilities.AllowedCapabilities,
 		)
 	}
 }

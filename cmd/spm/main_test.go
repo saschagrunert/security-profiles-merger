@@ -169,6 +169,17 @@ func TestReadInputsNoPathsUsesStdin(t *testing.T) {
 	}
 }
 
+func TestReadInputsDuplicateStdin(t *testing.T) {
+	t.Parallel()
+
+	stdin := strings.NewReader(`{"a":1}`)
+
+	_, err := readInputs([]string{"-", "-"}, stdin)
+	if !errors.Is(err, errDuplicateStdin) {
+		t.Errorf("error = %v, want %v", err, errDuplicateStdin)
+	}
+}
+
 func TestErrorSentinels(t *testing.T) {
 	t.Parallel()
 

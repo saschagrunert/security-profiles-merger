@@ -432,6 +432,98 @@ func TestDiffSlice(t *testing.T) {
 	}
 }
 
+func TestClonePtrNil(t *testing.T) {
+	t.Parallel()
+
+	result := merge.ClonePtr[int](nil)
+	if result != nil {
+		t.Errorf("ClonePtr(nil) = %v, want nil", result)
+	}
+}
+
+func TestClonePtrValue(t *testing.T) {
+	t.Parallel()
+
+	val := 42
+	original := &val
+
+	cloned := merge.ClonePtr(original)
+	if cloned == nil {
+		t.Fatal("ClonePtr returned nil for non-nil input")
+	}
+
+	if *cloned != 42 {
+		t.Errorf("ClonePtr value = %d, want 42", *cloned)
+	}
+
+	if cloned == original {
+		t.Error("ClonePtr should return a new pointer, not the same one")
+	}
+
+	*cloned = 99
+
+	if *original != 42 {
+		t.Error("modifying clone affected original")
+	}
+}
+
+func TestDeduplicateSliceEmpty(t *testing.T) {
+	t.Parallel()
+
+	result := merge.DeduplicateSlice[string](nil)
+	if result != nil {
+		t.Errorf("DeduplicateSlice(nil) = %v, want nil", result)
+	}
+}
+
+func TestDeduplicateSliceNoDuplicates(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"a", "b", "c"}
+	result := merge.DeduplicateSlice(input)
+
+	if !slices.Equal(result, input) {
+		t.Errorf("DeduplicateSlice(%v) = %v, want %v", input, result, input)
+	}
+}
+
+func TestDeduplicateSliceWithDuplicates(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"a", "b", "a", "c", "b", "a"}
+	want := []string{"a", "b", "c"}
+
+	result := merge.DeduplicateSlice(input)
+
+	if !slices.Equal(result, want) {
+		t.Errorf("DeduplicateSlice(%v) = %v, want %v", input, result, want)
+	}
+}
+
+func TestDeduplicateSliceSingle(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"x"}
+	result := merge.DeduplicateSlice(input)
+
+	if !slices.Equal(result, input) {
+		t.Errorf("DeduplicateSlice(%v) = %v, want %v", input, result, input)
+	}
+}
+
+func TestDeduplicateSliceAllSame(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"x", "x", "x"}
+	want := []string{"x"}
+
+	result := merge.DeduplicateSlice(input)
+
+	if !slices.Equal(result, want) {
+		t.Errorf("DeduplicateSlice(%v) = %v, want %v", input, result, want)
+	}
+}
+
 func buildOverlappingSlices(size int) ([]string, []string) {
 	half := size / 2
 	left := make([]string, 0, size)
@@ -494,6 +586,37 @@ func BenchmarkFold(b *testing.B) {
 		b.Run(fmt.Sprintf("profiles=%d", count), func(b *testing.B) {
 			for range b.N {
 				_, _ = merge.Fold(profiles, cloneTestProfile, addTestProfiles)
+			}
+		})
+	}
+}
+
+func BenchmarkClonePtr(b *testing.B) {
+	val := 42
+
+	b.Run("nil", func(b *testing.B) {
+		for range b.N {
+			_ = merge.ClonePtr[int](nil)
+		}
+	})
+
+	b.Run("non-nil", func(b *testing.B) {
+		for range b.N {
+			_ = merge.ClonePtr(&val)
+		}
+	})
+}
+
+func BenchmarkDeduplicateSlice(b *testing.B) {
+	for _, size := range []int{8, 20, 100} {
+		items := make([]string, size)
+		for idx := range size {
+			items[idx] = fmt.Sprintf("item_%d", idx%((size/2)+1))
+		}
+
+		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+			for range b.N {
+				_ = merge.DeduplicateSlice(items)
 			}
 		})
 	}
