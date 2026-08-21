@@ -510,3 +510,36 @@ func TestDiffFormatComplex(t *testing.T) {
 		}
 	}
 }
+
+func TestDiffNormalizesPathsBeforeComparing(t *testing.T) {
+	t.Parallel()
+
+	left := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"read_file"},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{
+			{Path: "/var/log/../data", AccessFS: []landlock.FSAccessRight{"read_file"}},
+		},
+		NetRules: nil,
+	}
+
+	right := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{"read_file"},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{
+			{Path: "/var/data", AccessFS: []landlock.FSAccessRight{"read_file"}},
+		},
+		NetRules: nil,
+	}
+
+	diff, err := landlock.Diff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !diff.IsEqual() {
+		t.Error("expected equal after path normalization")
+	}
+}

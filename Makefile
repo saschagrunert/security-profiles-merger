@@ -6,6 +6,8 @@ GOVULNCHECK_VERSION = v1.7.0
 MDTOC_VERSION = v1.4.0
 ZEITGEIST_VERSION = v0.8.0
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 BUILD_DIR := build
 GOLANGCI_LINT := $(BUILD_DIR)/golangci-lint
 ZEITGEIST := $(BUILD_DIR)/zeitgeist
@@ -47,7 +49,7 @@ help: ## Display this help
 .PHONY: build
 build: ## Build the spm binary (static)
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o $(BUILD_DIR)/spm ./cmd/spm/
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o $(BUILD_DIR)/spm ./cmd/spm/
 
 ##@ Development
 

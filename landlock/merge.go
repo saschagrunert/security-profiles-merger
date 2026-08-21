@@ -439,27 +439,8 @@ func deduplicatePathRules(profile *Profile) {
 }
 
 func deduplicateHandledAccess(profile *Profile) {
-	profile.HandledAccessFS = deduplicateSlice(profile.HandledAccessFS)
-	profile.HandledAccessNet = deduplicateSlice(profile.HandledAccessNet)
-}
-
-func deduplicateSlice[T comparable](items []T) []T {
-	if len(items) == 0 {
-		return items
-	}
-
-	seen := make(map[T]struct{}, len(items))
-
-	var result []T
-
-	for _, item := range items {
-		if _, ok := seen[item]; !ok {
-			seen[item] = struct{}{}
-			result = append(result, item)
-		}
-	}
-
-	return result
+	profile.HandledAccessFS = merge.DeduplicateSlice(profile.HandledAccessFS)
+	profile.HandledAccessNet = merge.DeduplicateSlice(profile.HandledAccessNet)
 }
 
 func deduplicateNetRules(profile *Profile) {
@@ -487,7 +468,7 @@ func deduplicateNetRules(profile *Profile) {
 }
 
 func deduplicateScoped(profile *Profile) {
-	profile.Scoped = deduplicateSlice(profile.Scoped)
+	profile.Scoped = merge.DeduplicateSlice(profile.Scoped)
 }
 
 func normalizeProfile(profile *Profile) *Profile {

@@ -19,6 +19,7 @@ package seccomp
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -221,9 +222,9 @@ func diffSyscallEntries(
 
 	var syscallsDiff SyscallsDiff
 
-	leftNames := sortedKeys(leftMap)
+	leftNames := slices.Sorted(maps.Keys(leftMap))
 	collectRemovedSyscalls(&syscallsDiff, leftNames, leftMap, rightMap)
-	collectAddedSyscalls(&syscallsDiff, sortedKeys(rightMap), leftMap, rightMap)
+	collectAddedSyscalls(&syscallsDiff, slices.Sorted(maps.Keys(rightMap)), leftMap, rightMap)
 	collectChangedSyscalls(&syscallsDiff, leftNames, leftMap, rightMap)
 
 	if len(syscallsDiff.Added) > 0 ||
@@ -336,7 +337,7 @@ func equalSyscallEntrySlices(left, right []SyscallEntry) bool {
 
 func sortSyscallEntries(entries []SyscallEntry) {
 	slices.SortFunc(entries, func(left, right SyscallEntry) int {
-		if result := strings.Compare(string(left.Action), string(right.Action)); result != 0 {
+		if result := cmp.Compare(left.Action, right.Action); result != 0 {
 			return result
 		}
 
@@ -378,7 +379,7 @@ func compareSyscallArgs(left, right []specs.LinuxSeccompArg) int {
 			return result
 		}
 
-		if result := strings.Compare(string(left[idx].Op), string(right[idx].Op)); result != 0 {
+		if result := cmp.Compare(left[idx].Op, right[idx].Op); result != 0 {
 			return result
 		}
 	}
@@ -396,17 +397,6 @@ func equalSyscallEntry(first, second SyscallEntry) bool {
 	}
 
 	return slices.Equal(first.Args, second.Args)
-}
-
-func sortedKeys[V any](items map[string]V) []string {
-	keys := make([]string, 0, len(items))
-	for key := range items {
-		keys = append(keys, key)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }
 
 // FormatDiff returns a human-readable representation of a seccomp profile diff.
