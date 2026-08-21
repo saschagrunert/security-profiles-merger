@@ -29,7 +29,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exhaustruct
+    - exhaustruct_v5
     - exptostd
     - fatcontext
     - forbidigo
@@ -125,8 +125,8 @@ linters:
             - $gostd
             - github.com/opencontainers/runtime-spec
             - github.com/saschagrunert/security-profiles-merger
-    exhaustruct:
-      exclude:
+    exhaustruct_v5:
+      ignore-patterns:
         - 'github\.com/opencontainers/runtime-spec/specs-go\..*'
     gocritic:
       enable-all: true
