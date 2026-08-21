@@ -1,0 +1,20 @@
+{
+  "handledAccessFs": [
+    "read_file",
+    "write_file"
+  ],
+  "pathRules": [
+    {
+      "path": "/etc",
+      "accessFs": [
+        "read_file"
+      ]
+    },
+    {
+      "path": "/var",
+      "accessFs": [
+        "read_file"
+      ]
+    }
+  ]
+}

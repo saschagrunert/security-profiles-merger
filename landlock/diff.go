@@ -49,10 +49,7 @@ type ProfileDiff struct {
 func (d ProfileDiff) IsEqual() bool { return d.Equal }
 
 // RightsDiff represents added and removed items in a rights set.
-type RightsDiff[T comparable] struct {
-	Added   []T `json:"added,omitempty"`
-	Removed []T `json:"removed,omitempty"`
-}
+type RightsDiff[T comparable] = merge.SliceDiff[T]
 
 // PathRulesDiff describes differences in path rules.
 type PathRulesDiff struct {

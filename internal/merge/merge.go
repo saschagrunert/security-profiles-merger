@@ -123,6 +123,12 @@ func DiffSlice[T cmp.Ordered](left, right []T) ([]T, []T) {
 	return added, removed
 }
 
+// SliceDiff represents added and removed items in a set-like slice.
+type SliceDiff[T comparable] struct {
+	Added   []T `json:"added,omitempty"`
+	Removed []T `json:"removed,omitempty"`
+}
+
 const smallSliceThreshold = 16
 
 // IntersectSlice returns elements present in both left and right.

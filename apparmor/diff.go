@@ -48,10 +48,7 @@ type ProfileDiff struct {
 func (d ProfileDiff) IsEqual() bool { return d.Equal }
 
 // StringSliceDiff represents added and removed items in a string slice.
-type StringSliceDiff struct {
-	Added   []string `json:"added,omitempty"`
-	Removed []string `json:"removed,omitempty"`
-}
+type StringSliceDiff = merge.SliceDiff[string]
 
 // FilesystemDiff describes differences in filesystem rules.
 type FilesystemDiff struct {
