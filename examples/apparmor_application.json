@@ -1,0 +1,20 @@
+{
+  "executable": {
+    "allowedExecutables": ["/usr/bin/bash", "/usr/bin/python3"],
+    "allowedLibraries": ["/usr/lib/libc.so", "/usr/lib/libpython3.so"]
+  },
+  "filesystem": {
+    "readOnlyPaths": ["/etc/config"],
+    "readWritePaths": ["/tmp", "/var/data"]
+  },
+  "network": {
+    "allowRaw": false,
+    "allowedProtocols": {
+      "allowTcp": true,
+      "allowUdp": true
+    }
+  },
+  "capability": {
+    "allowedCapabilities": ["NET_BIND_SERVICE", "NET_ADMIN"]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "handledAccessFs": ["read_file", "read_dir", "write_file", "execute"],
+  "handledAccessNet": ["bind_tcp", "connect_tcp"],
+  "scoped": ["abstract_unix_socket"],
+  "pathRules": [
+    {
+      "path": "/etc",
+      "accessFs": ["read_file", "read_dir"]
+    },
+    {
+      "path": "/usr/bin",
+      "accessFs": ["read_file", "execute"]
+    },
+    {
+      "path": "/tmp",
+      "accessFs": ["read_file", "write_file", "read_dir"]
+    }
+  ],
+  "netRules": [
+    {
+      "port": 443,
+      "accessNet": ["connect_tcp"]
+    }
+  ]
+}

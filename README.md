@@ -19,11 +19,13 @@ A standalone Go library for merging security profiles
   - [Security Profiles Operator: combine recorded profiles (union)](#security-profiles-operator-combine-recorded-profiles-union)
   - [AppArmor profile merge](#apparmor-profile-merge)
   - [Landlock profile merge](#landlock-profile-merge)
+- [Examples](#examples)
 - [CLI](#cli)
   - [Install](#install)
   - [Merge profiles](#merge-profiles)
   - [Validate profiles](#validate-profiles)
   - [Diff profiles](#diff-profiles)
+  - [Version](#version)
 - [Community, discussion, contribution, and support](#community-discussion-contribution-and-support)
   - [Code of Conduct](#code-of-conduct)
 <!-- /toc -->
@@ -96,6 +98,22 @@ aaCombined, err := apparmor.Union(recorded1, recorded2)
 ```go
 llEffective, err := landlock.Intersect(baseRuleset, ociRuleset)
 llCombined, err := landlock.Union(recorded1, recorded2)
+```
+
+## Examples
+
+The `examples/` directory contains sample profiles for each type (seccomp,
+AppArmor, Landlock) that can be used to try out the CLI or as starting points
+for custom profiles:
+
+```sh
+spm merge --type seccomp --strategy intersect \
+  examples/seccomp_baseline.json examples/seccomp_application.json
+
+spm diff --type apparmor --format human \
+  examples/apparmor_baseline.json examples/apparmor_application.json
+
+spm validate --type landlock --strict examples/landlock_baseline.json
 ```
 
 ## CLI
@@ -201,6 +219,14 @@ cat profiles.json | spm diff --type landlock
 ```
 
 Exits 0 if profiles are equal, 1 if they differ, or 2 on usage error.
+
+### Version
+
+```sh
+spm version
+spm --version
+spm -v
+```
 
 ## Community, discussion, contribution, and support
 
