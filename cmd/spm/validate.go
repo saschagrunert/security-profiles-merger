@@ -149,7 +149,7 @@ func validateProfiles[T any](
 	for idx, profile := range profiles {
 		err := check(profile)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "profile %d: %v\n", idx, err)
+			_, _ = fmt.Fprintf(stderr, "error: profile %d: %v\n", idx, err)
 
 			failed = true
 		}

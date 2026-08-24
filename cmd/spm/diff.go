@@ -34,6 +34,7 @@ const (
 	diffUsage = `Usage: spm diff [options] <file1> <file2>
 
 Compare two security profiles and show their differences.
+Reads from stdin (as a JSON array of exactly 2 profiles) when no files are provided.
 Exit code 0 means equal, 1 means different, 2 means error.
 
 Options:
