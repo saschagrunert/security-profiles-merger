@@ -18,6 +18,8 @@ package main
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,11 +49,18 @@ func TestValidateErrors(t *testing.T) {
 			wantStderr: "[files...]",
 		},
 		{
-			name:       "missing type",
+			name:       "no type no input",
 			args:       []string{cmdValidate},
 			stdin:      nil,
+			wantCode:   1,
+			wantStderr: testNoInput,
+		},
+		{
+			name:       "undetectable type",
+			args:       []string{cmdValidate},
+			stdin:      strings.NewReader("{}"),
 			wantCode:   exitUsage,
-			wantStderr: "--type is required",
+			wantStderr: "could not detect",
 		},
 		{
 			name:       testUnknownType,
@@ -406,5 +415,47 @@ func TestValidateSeccompStrict(t *testing.T) {
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
+func TestValidateOutputFlag(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+	outFile := filepath.Join(t.TempDir(), "validate_output.json")
+
+	code, _, _ := runCapture(t, []string{
+		cmdValidate, flagType, typeSeccomp, "--output", outFile, file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Error("output file is empty")
+	}
+}
+
+func TestValidateAutoDetect(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdValidate, file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	if !strings.Contains(stdout, "defaultAction") {
+		t.Errorf("expected seccomp output, got: %s", stdout)
 	}
 }

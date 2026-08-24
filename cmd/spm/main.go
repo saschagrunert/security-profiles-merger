@@ -18,9 +18,11 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 var version = "dev"
@@ -59,6 +61,114 @@ Run 'spm <command> --help' for details on each command.
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func detectProfileType(data [][]byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	var fields map[string]json.RawMessage
+
+	err := json.Unmarshal(data[0], &fields)
+	if err != nil {
+		return ""
+	}
+
+	if _, ok := fields["defaultAction"]; ok {
+		return typeSeccomp
+	}
+
+	for _, key := range []string{
+		"handledAccessFs", "handledAccessNet", "pathRules", "netRules", "scoped",
+	} {
+		if _, ok := fields[key]; ok {
+			return typeLandlock
+		}
+	}
+
+	for _, key := range []string{
+		"executable", "filesystem", "capability", "network",
+	} {
+		if _, ok := fields[key]; ok {
+			return typeAppArmor
+		}
+	}
+
+	return ""
+}
+
+func openOutput(
+	path string, defaultWriter io.Writer, stderr io.Writer,
+) (io.Writer, func(), int) {
+	if path == "" {
+		return defaultWriter, func() {}, 0
+	}
+
+	file, err := os.Create(filepath.Clean(path))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: creating output file: %v\n", err)
+
+		return nil, func() {}, 1
+	}
+
+	cleanup := func() {
+		err := file.Close()
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: closing output file: %v\n", err)
+		}
+	}
+
+	return file, cleanup, 0
+}
+
+func validateFormat(format string, stderr io.Writer) int {
+	if format != formatJSON && format != formatHuman {
+		_, _ = fmt.Fprintf(
+			stderr, "error: unknown format %q (use json or human)\n", format,
+		)
+
+		return exitUsage
+	}
+
+	return 0
+}
+
+func validateProfileType(profileType string, stderr io.Writer) int {
+	if profileType != "" &&
+		profileType != typeSeccomp &&
+		profileType != typeAppArmor &&
+		profileType != typeLandlock {
+		_, _ = fmt.Fprintf(
+			stderr,
+			"error: unknown type %q (use seccomp, apparmor, or landlock)\n",
+			profileType,
+		)
+
+		return exitUsage
+	}
+
+	return 0
+}
+
+func resolveProfileType(
+	profileType *string, data [][]byte, stderr io.Writer,
+) int {
+	if *profileType != "" {
+		return 0
+	}
+
+	*profileType = detectProfileType(data)
+
+	if *profileType == "" {
+		_, _ = fmt.Fprintln(
+			stderr, "error: could not detect profile type, use --type",
+		)
+
+		return exitUsage
+	}
+
+	return 0
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

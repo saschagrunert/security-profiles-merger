@@ -18,18 +18,35 @@ package apparmor
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 )
 
 func TestGlobRegexCacheEviction(t *testing.T) {
-	globRegexCache.Clear()
-	globRegexCacheCount.Store(0)
+	globCacheMu.Lock()
+
+	saved := globCacheEntries
+	globCacheEntries = make(map[string]*regexp.Regexp)
+
+	globCacheMu.Unlock()
+
+	t.Cleanup(func() {
+		globCacheMu.Lock()
+		globCacheEntries = saved
+		globCacheMu.Unlock()
+	})
 
 	for idx := range maxGlobCacheEntries + 1 {
 		globToRegex(fmt.Sprintf("/test/%d/*", idx))
 	}
 
-	if globRegexCacheCount.Load() > maxGlobCacheEntries {
+	globCacheMu.RLock()
+
+	count := len(globCacheEntries)
+
+	globCacheMu.RUnlock()
+
+	if count > maxGlobCacheEntries {
 		t.Error("cache count should have been reset after eviction")
 	}
 }

@@ -141,11 +141,14 @@ func Diff(left, right *specs.LinuxSeccomp) (*ProfileDiff, error) {
 func diffDefaultAction(
 	diff *ProfileDiff, left, right *specs.LinuxSeccomp,
 ) {
-	if left.DefaultAction != right.DefaultAction {
+	leftAction := canonicalAction(left.DefaultAction)
+	rightAction := canonicalAction(right.DefaultAction)
+
+	if leftAction != rightAction {
 		diff.Equal = false
 		diff.DefaultAction = &ActionDiff{
-			Left:  left.DefaultAction,
-			Right: right.DefaultAction,
+			Left:  leftAction,
+			Right: rightAction,
 		}
 	}
 }
@@ -288,17 +291,43 @@ func buildSyscallMap(
 	result := make(map[string][]SyscallEntry)
 
 	for _, syscall := range syscalls {
+		action := canonicalAction(syscall.Action)
+
 		for _, name := range syscall.Names {
-			result[name] = append(result[name], SyscallEntry{
+			entry := SyscallEntry{
 				Name:     name,
-				Action:   syscall.Action,
+				Action:   action,
 				ErrnoRet: merge.ClonePtr(syscall.ErrnoRet),
 				Args:     slices.Clone(syscall.Args),
-			})
+			}
+
+			if !containsSyscallEntry(result[name], entry) {
+				result[name] = append(result[name], entry)
+			}
 		}
 	}
 
 	return result
+}
+
+func canonicalAction(
+	action specs.LinuxSeccompAction,
+) specs.LinuxSeccompAction {
+	if action == specs.ActKillThread {
+		return specs.ActKill
+	}
+
+	return action
+}
+
+func containsSyscallEntry(entries []SyscallEntry, entry SyscallEntry) bool {
+	for _, existing := range entries {
+		if equalSyscallEntry(existing, entry) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func entriesToDetails(entries []SyscallEntry) []SyscallDetail {
