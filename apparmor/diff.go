@@ -231,7 +231,10 @@ func diffBoolPtr(left, right *bool) *BoolPtrDiff {
 	}
 
 	if left == nil || right == nil || *left != *right {
-		return &BoolPtrDiff{Left: left, Right: right}
+		return &BoolPtrDiff{
+			Left:  merge.ClonePtr(left),
+			Right: merge.ClonePtr(right),
+		}
 	}
 
 	return nil

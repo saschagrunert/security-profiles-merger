@@ -21,7 +21,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 var (
@@ -31,14 +30,11 @@ var (
 	// neverMatchRe is a fallback regex that matches nothing.
 	neverMatchRe = regexp.MustCompile(`^(?:$.)$`)
 
-	// globRegexCache caches compiled glob patterns for reuse.
-	globRegexCache sync.Map
+	// globCacheMu protects globCacheEntries.
+	globCacheMu sync.RWMutex
 
-	// globRegexCacheCount tracks the number of entries in the cache.
-	globRegexCacheCount atomic.Int64
-
-	// globCacheEvicting prevents concurrent eviction storms.
-	globCacheEvicting atomic.Bool
+	// globCacheEntries stores compiled glob regexes keyed by pattern.
+	globCacheEntries = make(map[string]*regexp.Regexp)
 )
 
 const (
@@ -48,29 +44,32 @@ const (
 )
 
 func globToRegex(pattern string) *regexp.Regexp {
-	if cached, ok := globRegexCache.Load(pattern); ok {
-		compiled, _ := cached.(*regexp.Regexp)
+	globCacheMu.RLock()
 
-		return compiled
+	if cached, ok := globCacheEntries[pattern]; ok {
+		globCacheMu.RUnlock()
+
+		return cached
 	}
+
+	globCacheMu.RUnlock()
 
 	compiled := compileGlob(pattern)
 
-	actual, loaded := globRegexCache.LoadOrStore(pattern, compiled)
-	if !loaded {
-		count := globRegexCacheCount.Add(1)
-		if count > maxGlobCacheEntries &&
-			globCacheEvicting.CompareAndSwap(false, true) {
-			globRegexCache.Clear()
-			globRegexCache.Store(pattern, compiled)
-			globRegexCacheCount.Store(1)
-			globCacheEvicting.Store(false)
-		}
+	globCacheMu.Lock()
+	defer globCacheMu.Unlock()
+
+	if cached, ok := globCacheEntries[pattern]; ok {
+		return cached
 	}
 
-	stored, _ := actual.(*regexp.Regexp)
+	if len(globCacheEntries) >= maxGlobCacheEntries {
+		globCacheEntries = make(map[string]*regexp.Regexp)
+	}
 
-	return stored
+	globCacheEntries[pattern] = compiled
+
+	return compiled
 }
 
 func compileGlob(pattern string) *regexp.Regexp {

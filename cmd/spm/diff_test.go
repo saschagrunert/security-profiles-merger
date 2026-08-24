@@ -17,7 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,11 +50,18 @@ func TestDiffErrors(t *testing.T) {
 			wantStderr: "<file1>",
 		},
 		{
-			name:       "missing type",
+			name:       "auto-detect type",
 			args:       []string{cmdDiff, seccompFile, seccompFile2},
 			stdin:      nil,
+			wantCode:   0,
+			wantStderr: "",
+		},
+		{
+			name:       "undetectable type",
+			args:       []string{cmdDiff},
+			stdin:      strings.NewReader("[{}, {}]"),
 			wantCode:   exitUsage,
-			wantStderr: "--type",
+			wantStderr: "could not detect",
 		},
 		{
 			name:       testUnknownType,
@@ -127,7 +137,11 @@ func TestDiffErrors(t *testing.T) {
 				t.Fatalf("exit code = %d, want %d", code, testCase.wantCode)
 			}
 
-			if !strings.Contains(stderr, testCase.wantStderr) {
+			if testCase.wantStderr == "" {
+				if stderr != "" {
+					t.Errorf("stderr = %q, want empty", stderr)
+				}
+			} else if !strings.Contains(stderr, testCase.wantStderr) {
 				t.Errorf("stderr = %q, missing %q", stderr, testCase.wantStderr)
 			}
 		})
@@ -273,6 +287,58 @@ func TestDiffAppArmorHuman(t *testing.T) {
 
 	if !strings.Contains(stdout, "Diff{") {
 		t.Errorf("expected Diff{...} output, got: %s", stdout)
+	}
+}
+
+func TestDiffOutputFlag(t *testing.T) {
+	t.Parallel()
+
+	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
+	fileB := writeTemp(t, seccompJSON(t, "write"))
+	outFile := filepath.Join(t.TempDir(), "diff_output.json")
+
+	code, _, _ := runCapture(t, []string{
+		cmdDiff, flagType, typeSeccomp, "--output", outFile, fileA, fileB,
+	}, nil)
+
+	if code != exitDiff {
+		t.Fatalf("exit code = %d, want %d", code, exitDiff)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+
+	var diff seccomp.ProfileDiff
+
+	err = json.Unmarshal(data, &diff)
+	if err != nil {
+		t.Fatalf("unmarshaling output: %v", err)
+	}
+
+	if diff.Equal {
+		t.Error("expected different profiles in output file")
+	}
+}
+
+func TestDiffOutputFlagBadPath(t *testing.T) {
+	t.Parallel()
+
+	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
+
+	code, _, stderr := runCapture(t, []string{
+		cmdDiff, flagType, typeSeccomp,
+		"--output", "/nonexistent/dir/out.json",
+		fileA, fileA,
+	}, nil)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "creating output file") {
+		t.Errorf("stderr = %q, missing output file error", stderr)
 	}
 }
 

@@ -49,9 +49,12 @@ func runMerge(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		flags.PrintDefaults()
 	}
 
-	profileType := flags.String("type", "", "profile type: seccomp, apparmor, landlock (required)")
+	profileType := flags.String(
+		"type", "", "profile type: seccomp, apparmor, landlock (auto-detected if omitted)",
+	)
 	strategy := flags.String("strategy", "", "merge strategy: intersect, union (required)")
 	format := flags.String("format", formatJSON, "output format: json, human")
+	output := flags.String("output", "", "write output to file (default: stdout)")
 
 	err := flags.Parse(args)
 	if err != nil {
@@ -74,14 +77,26 @@ func runMerge(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	return dispatchMerge(data, *profileType, *strategy, *format, stdout, stderr)
+	if code := resolveProfileType(profileType, data, stderr); code != 0 {
+		return code
+	}
+
+	outWriter, cleanup, code := openOutput(*output, stdout, stderr)
+	if code != 0 {
+		return code
+	}
+
+	defer cleanup()
+
+	return dispatchMerge(data, *profileType, *strategy, *format, outWriter, stderr)
 }
 
 func validateMergeFlags(
-	profileType, strategy, format string, flags *flag.FlagSet, stderr io.Writer,
+	profileType, strategy, format string,
+	flags *flag.FlagSet, stderr io.Writer,
 ) int {
-	if profileType == "" || strategy == "" {
-		_, _ = fmt.Fprintln(stderr, "error: --type and --strategy are required")
+	if strategy == "" {
+		_, _ = fmt.Fprintln(stderr, "error: --strategy is required")
 
 		flags.PrintDefaults()
 
@@ -90,27 +105,19 @@ func validateMergeFlags(
 
 	if strategy != strategyIntersect && strategy != strategyUnion {
 		_, _ = fmt.Fprintf(
-			stderr, "error: unknown strategy %q (use intersect or union)\n", strategy,
+			stderr,
+			"error: unknown strategy %q (use intersect or union)\n",
+			strategy,
 		)
 
 		return exitUsage
 	}
 
-	if format != formatJSON && format != formatHuman {
-		_, _ = fmt.Fprintf(stderr, "error: unknown format %q (use json or human)\n", format)
-
-		return exitUsage
+	if code := validateFormat(format, stderr); code != 0 {
+		return code
 	}
 
-	if profileType != typeSeccomp && profileType != typeAppArmor && profileType != typeLandlock {
-		_, _ = fmt.Fprintf(
-			stderr, "error: unknown type %q (use seccomp, apparmor, or landlock)\n", profileType,
-		)
-
-		return exitUsage
-	}
-
-	return 0
+	return validateProfileType(profileType, stderr)
 }
 
 func dispatchMerge(
@@ -181,11 +188,26 @@ func mergeProfiles[T any](
 	return writeOutput(result, formatFn(result), format, stdout, stderr)
 }
 
-var errDuplicateStdin = errors.New("stdin (\"-\") can only be specified once")
+const (
+	maxInputFiles = 1000
+	maxInputSize  = 10 << 20
+)
+
+var (
+	errDuplicateStdin = errors.New("stdin (\"-\") can only be specified once")
+	errTooManyFiles   = fmt.Errorf("too many input files (max %d)", maxInputFiles)
+	errEmptyInput     = errors.New("no input provided")
+	errStdinTooLarge  = fmt.Errorf("stdin input exceeds %d bytes", maxInputSize)
+	errFileTooLarge   = fmt.Errorf("file exceeds %d byte limit", maxInputSize)
+)
 
 func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 	if len(paths) == 0 {
 		return readFromStdin(stdin)
+	}
+
+	if len(paths) > maxInputFiles {
+		return nil, errTooManyFiles
 	}
 
 	var result [][]byte
@@ -210,20 +232,7 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 			continue
 		}
 
-		path = filepath.Clean(path)
-
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", path, err)
-		}
-
-		if info.Size() > maxInputSize {
-			return nil, fmt.Errorf(
-				"reading %s: %w (%d bytes)", path, errFileTooLarge, info.Size(),
-			)
-		}
-
-		data, err := os.ReadFile(path)
+		data, err := readFileWithLimit(filepath.Clean(path))
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
@@ -234,13 +243,25 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 	return result, nil
 }
 
-const maxInputSize = 10 << 20
+func readFileWithLimit(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open: %w", err)
+	}
 
-var (
-	errEmptyInput    = errors.New("no input provided")
-	errStdinTooLarge = fmt.Errorf("stdin input exceeds %d bytes", maxInputSize)
-	errFileTooLarge  = fmt.Errorf("file exceeds %d byte limit", maxInputSize)
-)
+	defer func() { _ = file.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxInputSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read: %w", err)
+	}
+
+	if len(data) > maxInputSize {
+		return nil, errFileTooLarge
+	}
+
+	return data, nil
+}
 
 func readFromStdin(reader io.Reader) ([][]byte, error) {
 	if reader == nil {

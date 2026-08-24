@@ -18,7 +18,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -74,14 +78,14 @@ func TestMergeErrors(t *testing.T) {
 			args:       []string{cmdMerge},
 			stdin:      nil,
 			wantCode:   exitUsage,
-			wantStderr: "--type and --strategy are required",
+			wantStderr: "--strategy is required",
 		},
 		{
 			name:       "missing strategy",
 			args:       []string{cmdMerge, flagType, typeSeccomp},
 			stdin:      nil,
 			wantCode:   exitUsage,
-			wantStderr: "--type and --strategy are required",
+			wantStderr: "--strategy is required",
 		},
 		{
 			name:       "unknown strategy",
@@ -522,5 +526,291 @@ func TestMergeStdinDash(t *testing.T) {
 
 	if len(result.Syscalls) != 1 {
 		t.Errorf("expected 1 syscall, got %d", len(result.Syscalls))
+	}
+}
+
+func TestMergeAutoDetectSeccomp(t *testing.T) {
+	t.Parallel()
+
+	fileA := writeTemp(t, seccompJSON(t, testSyscallRead))
+	fileB := writeTemp(t, seccompJSON(t, testSyscallRead, "write"))
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdMerge, flagStrategy, strategyUnion, fileA, fileB,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	var result specs.LinuxSeccomp
+
+	unmarshalOutput(t, stdout, &result)
+
+	if len(result.Syscalls) != 2 {
+		t.Errorf("expected 2 syscalls, got %d", len(result.Syscalls))
+	}
+}
+
+func TestMergeAutoDetectAppArmor(t *testing.T) {
+	t.Parallel()
+
+	fileA := writeTemp(t, apparmorJSON(t, "NET_ADMIN"))
+	fileB := writeTemp(t, apparmorJSON(t, "SYS_TIME"))
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdMerge, flagStrategy, strategyUnion, fileA, fileB,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	var result apparmor.Profile
+
+	unmarshalOutput(t, stdout, &result)
+
+	if result.Capabilities == nil || len(result.Capabilities.AllowedCapabilities) != 2 {
+		t.Error("expected 2 capabilities in union")
+	}
+}
+
+func TestMergeAutoDetectLandlock(t *testing.T) {
+	t.Parallel()
+
+	fileA := writeTemp(t, landlockJSON(t, "read_file"))
+	fileB := writeTemp(t, landlockJSON(t, "read_file", "write_file"))
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdMerge, flagStrategy, strategyUnion, fileA, fileB,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	var result landlock.Profile
+
+	unmarshalOutput(t, stdout, &result)
+
+	if len(result.HandledAccessFS) != 1 ||
+		result.HandledAccessFS[0] != landlock.FSAccessReadFile {
+		t.Errorf(
+			"expected [read_file] (intersection of handled rights), got %v",
+			result.HandledAccessFS,
+		)
+	}
+
+	if len(result.PathRules) != 1 {
+		t.Errorf("expected 1 path rule, got %d", len(result.PathRules))
+	}
+}
+
+func TestMergeOutputFlag(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+	outFile := filepath.Join(t.TempDir(), "output.json")
+
+	code, _, _ := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp,
+		flagStrategy, strategyIntersect,
+		"--output", outFile,
+		file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+
+	var result specs.LinuxSeccomp
+
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		t.Fatalf("unmarshaling output file: %v", err)
+	}
+
+	if len(result.Syscalls) != 1 {
+		t.Errorf("expected 1 syscall, got %d", len(result.Syscalls))
+	}
+}
+
+func TestMergeAutoDetectStdin(t *testing.T) {
+	t.Parallel()
+
+	profile := seccompJSON(t, testSyscallRead)
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdMerge, flagStrategy, strategyIntersect,
+	}, strings.NewReader("["+profile+","+profile+"]"))
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	var result specs.LinuxSeccomp
+
+	unmarshalOutput(t, stdout, &result)
+
+	if len(result.Syscalls) != 1 {
+		t.Errorf("expected 1 syscall, got %d", len(result.Syscalls))
+	}
+}
+
+func TestMergeFileTooLarge(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	bigFile := filepath.Join(dir, "big.json")
+
+	err := os.WriteFile(bigFile, make([]byte, maxInputSize+1), 0o600)
+	if err != nil {
+		t.Fatalf("writing big file: %v", err)
+	}
+
+	code, _, stderr := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect, bigFile,
+	}, nil)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "exceeds") {
+		t.Errorf("stderr = %q, missing file too large error", stderr)
+	}
+}
+
+func TestMergeOutputFlagBadPath(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+
+	code, _, stderr := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect,
+		"--output", "/nonexistent/dir/out.json", file,
+	}, nil)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "creating output file") {
+		t.Errorf("stderr = %q, missing output file error", stderr)
+	}
+}
+
+func TestMergeTooManyFiles(t *testing.T) {
+	t.Parallel()
+
+	baseArgs := []string{cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect}
+	args := make([]string, 0, len(baseArgs)+maxInputFiles+1)
+	args = append(args, baseArgs...)
+
+	for idx := range maxInputFiles + 1 {
+		args = append(args, fmt.Sprintf("/nonexistent/file_%d.json", idx))
+	}
+
+	code, _, stderr := runCapture(t, args, nil)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "too many") {
+		t.Errorf("stderr = %q, missing too many files error", stderr)
+	}
+}
+
+func TestMergeAutoDetectAmbiguousProfile(t *testing.T) {
+	t.Parallel()
+
+	ambiguous := `{"defaultAction":"SCMP_ACT_ERRNO","network":{"allowRaw":true}}`
+
+	fileA := writeTemp(t, ambiguous)
+	fileB := writeTemp(t, ambiguous)
+
+	code, stdout, _ := runCapture(t, []string{
+		cmdMerge, flagStrategy, strategyIntersect, fileA, fileB,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (seccomp takes priority)", code)
+	}
+
+	var result specs.LinuxSeccomp
+
+	unmarshalOutput(t, stdout, &result)
+
+	if result.DefaultAction != specs.ActErrno {
+		t.Errorf(
+			"expected seccomp detection (SCMP_ACT_ERRNO), got %v",
+			result.DefaultAction,
+		)
+	}
+}
+
+func TestMergeFileExactMaxSize(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "exact.json")
+
+	profile := []byte(seccompJSON(t, testSyscallRead))
+	content := make([]byte, maxInputSize)
+
+	for idx := range maxInputSize - len(profile) {
+		content[idx] = ' '
+	}
+
+	copy(content[maxInputSize-len(profile):], profile)
+
+	err := os.WriteFile(file, content, 0o600)
+	if err != nil {
+		t.Fatalf("writing file: %v", err)
+	}
+
+	code, _, stderr := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect, file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf(
+			"exit code = %d, want 0 for exactly maxInputSize file; stderr=%s",
+			code, stderr,
+		)
+	}
+}
+
+func TestMergeOutputHumanFormat(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+	outFile := filepath.Join(t.TempDir(), "output.txt")
+
+	code, _, _ := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp,
+		flagStrategy, strategyIntersect,
+		flagFormat, formatHuman,
+		"--output", outFile,
+		file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+
+	if !strings.Contains(string(data), "Profile{") {
+		t.Errorf("expected human-readable output in file, got: %s", data)
 	}
 }

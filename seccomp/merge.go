@@ -98,6 +98,11 @@ func foldProfiles(
 		return nil, fmt.Errorf("fold: %w", err)
 	}
 
+	// Remove before sort: SortFunc below accesses Names[0] unconditionally.
+	result.Syscalls = slices.DeleteFunc(result.Syscalls, func(s specs.LinuxSyscall) bool {
+		return len(s.Names) == 0
+	})
+
 	slices.SortFunc(result.Syscalls, func(a, b specs.LinuxSyscall) int {
 		return cmp.Compare(a.Names[0], b.Names[0])
 	})

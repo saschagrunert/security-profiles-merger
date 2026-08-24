@@ -948,3 +948,83 @@ func TestDiffIsEqualFalse(t *testing.T) {
 		t.Error("IsEqual() should return false for different profiles")
 	}
 }
+
+func TestDiffActKillEquivalence(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKill},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActKillThread},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal: ActKill and ActKillThread are semantically equivalent")
+	}
+}
+
+func TestDiffDuplicateEntries(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{Names: []string{syscallRead}, Action: specs.ActAllow},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal: duplicate identical entries should be deduplicated")
+	}
+}
+
+func TestDiffDefaultActionKillEquivalence(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKill,
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActKillThread,
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error(
+			"expected equal: ActKill and ActKillThread default actions" +
+				" are semantically equivalent",
+		)
+	}
+
+	if diff.DefaultAction != nil {
+		t.Error("expected no DefaultAction diff")
+	}
+}

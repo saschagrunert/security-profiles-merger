@@ -726,3 +726,35 @@ func TestDiffFormatNilBoolPtr(t *testing.T) {
 		t.Errorf("FormatDiff() = %q, missing raw:<nil>->true", got)
 	}
 }
+
+func TestDiffBoolPtrIsolation(t *testing.T) {
+	t.Parallel()
+
+	boolTrue := true
+
+	left := &apparmor.Profile{
+		Executable:   nil,
+		Filesystem:   nil,
+		Network:      &apparmor.NetworkRules{AllowRaw: &boolTrue, Protocols: nil},
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable:   nil,
+		Filesystem:   nil,
+		Network:      &apparmor.NetworkRules{AllowRaw: nil, Protocols: nil},
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff.Network == nil || diff.Network.AllowRaw == nil {
+		t.Fatal("expected network AllowRaw diff")
+	}
+
+	if diff.Network.AllowRaw.Left == left.Network.AllowRaw {
+		t.Error("diff Left should not alias source pointer")
+	}
+}

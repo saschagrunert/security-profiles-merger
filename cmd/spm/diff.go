@@ -53,8 +53,11 @@ func runDiff(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		flags.PrintDefaults()
 	}
 
-	profileType := flags.String("type", "", "profile type: seccomp, apparmor, landlock (required)")
+	profileType := flags.String(
+		"type", "", "profile type: seccomp, apparmor, landlock (auto-detected if omitted)",
+	)
 	format := flags.String("format", formatJSON, "output format: json, human")
+	output := flags.String("output", "", "write output to file (default: stdout)")
 
 	err := flags.Parse(args)
 	if err != nil {
@@ -65,26 +68,12 @@ func runDiff(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	if *profileType == "" {
-		_, _ = fmt.Fprintln(stderr, "error: --type is required")
-
-		flags.PrintDefaults()
-
-		return exitUsage
+	if code := validateFormat(*format, stderr); code != 0 {
+		return code
 	}
 
-	if *format != formatJSON && *format != formatHuman {
-		_, _ = fmt.Fprintf(stderr, "error: unknown format %q (use json or human)\n", *format)
-
-		return exitUsage
-	}
-
-	if *profileType != typeSeccomp && *profileType != typeAppArmor && *profileType != typeLandlock {
-		_, _ = fmt.Fprintf(
-			stderr, "error: unknown type %q (use seccomp, apparmor, or landlock)\n", *profileType,
-		)
-
-		return exitUsage
+	if code := validateProfileType(*profileType, stderr); code != 0 {
+		return code
 	}
 
 	data, err := readDiffInputs(flags.Args(), stdin)
@@ -94,7 +83,18 @@ func runDiff(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	return dispatchDiff(data, *profileType, *format, stdout, stderr)
+	if code := resolveProfileType(profileType, data, stderr); code != 0 {
+		return code
+	}
+
+	outWriter, cleanup, code := openOutput(*output, stdout, stderr)
+	if code != 0 {
+		return code
+	}
+
+	defer cleanup()
+
+	return dispatchDiff(data, *profileType, *format, outWriter, stderr)
 }
 
 func readDiffInputs(
