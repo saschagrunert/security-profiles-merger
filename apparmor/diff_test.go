@@ -680,3 +680,49 @@ func TestDiffNormalizesPathsBeforeComparing(t *testing.T) {
 		})
 	}
 }
+
+func TestDiffFormatNilBoolPtr(t *testing.T) {
+	t.Parallel()
+
+	trueVal := true
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: nil,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: nil,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: nil,
+	}
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network: &apparmor.NetworkRules{
+			AllowRaw: &trueVal,
+			Protocols: &apparmor.AllowedProtocols{
+				AllowTCP: &trueVal,
+				AllowUDP: nil,
+			},
+		},
+		Capabilities: nil,
+	}
+
+	diff, err := apparmor.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := apparmor.FormatDiff(diff)
+
+	if !strings.Contains(got, "<nil>") {
+		t.Errorf("FormatDiff() = %q, expected <nil> for nil bool ptr", got)
+	}
+
+	if !strings.Contains(got, "raw:<nil>->true") {
+		t.Errorf("FormatDiff() = %q, missing raw:<nil>->true", got)
+	}
+}

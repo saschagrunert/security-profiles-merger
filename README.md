@@ -218,7 +218,7 @@ Profiles can also be read from stdin as a JSON array:
 cat profiles.json | spm diff --type landlock
 ```
 
-Exits 0 if profiles are equal, 1 if they differ, or 2 on usage error.
+Exits 0 if profiles are equal, 1 if they differ, or 2 on error.
 
 ### Version
 

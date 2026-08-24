@@ -578,6 +578,17 @@ func TestUnionGlobDuplicateGlob(t *testing.T) {
 	)
 }
 
+func TestUnionGlobDuplicateInput(t *testing.T) {
+	t.Parallel()
+
+	assertGlobUnion(
+		t,
+		[]string{globBinStar, globBinStar, pathLibC},
+		[]string{pathLibC},
+		[]string{globBinStar, pathLibC},
+	)
+}
+
 func TestUnionFilesystemBroaderRightGlobPromotion(t *testing.T) {
 	t.Parallel()
 

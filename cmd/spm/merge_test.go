@@ -45,7 +45,7 @@ func TestMergeErrors(t *testing.T) {
 			name:       "merge help",
 			args:       []string{cmdMerge, flagHelp},
 			stdin:      nil,
-			wantCode:   exitUsage,
+			wantCode:   0,
 			wantStderr: "[files...]",
 		},
 		{
@@ -484,6 +484,22 @@ func TestMergeLandlockHumanFormat(t *testing.T) {
 
 	if !strings.Contains(stdout, "read_file") {
 		t.Errorf("expected human-readable output, got: %s", stdout)
+	}
+}
+
+func TestMergeDuplicateStdin(t *testing.T) {
+	t.Parallel()
+
+	code, _, stderr := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp, flagStrategy, strategyIntersect, "-", "-",
+	}, strings.NewReader("["+seccompJSON(t, testSyscallRead)+"]"))
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	if !strings.Contains(stderr, "stdin") {
+		t.Errorf("stderr = %q, missing stdin error", stderr)
 	}
 }
 

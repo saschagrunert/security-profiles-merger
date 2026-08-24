@@ -587,6 +587,30 @@ func TestValidateDuplicateFSRight(t *testing.T) {
 	}
 }
 
+func TestValidateDuplicateHandledAccessNet(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS: nil,
+		HandledAccessNet: []landlock.NetAccessRight{
+			landlock.NetAccessBindTCP,
+			landlock.NetAccessBindTCP,
+		},
+		Scoped:    nil,
+		PathRules: nil,
+		NetRules:  nil,
+	}
+
+	err := landlock.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate HandledAccessNet right")
+	}
+
+	if !errors.Is(err, landlock.ErrDuplicateRight) {
+		t.Errorf("expected ErrDuplicateRight, got: %v", err)
+	}
+}
+
 func TestValidateDuplicateNetRight(t *testing.T) {
 	t.Parallel()
 

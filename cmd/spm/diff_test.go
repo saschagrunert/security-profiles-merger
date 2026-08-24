@@ -40,6 +40,13 @@ func TestDiffErrors(t *testing.T) {
 		wantStderr string
 	}{
 		{
+			name:       "diff help",
+			args:       []string{cmdDiff, flagHelp},
+			stdin:      nil,
+			wantCode:   0,
+			wantStderr: "<file1>",
+		},
+		{
 			name:       "missing type",
 			args:       []string{cmdDiff, seccompFile, seccompFile2},
 			stdin:      nil,
