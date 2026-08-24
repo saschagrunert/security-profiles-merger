@@ -43,7 +43,7 @@ func TestValidateErrors(t *testing.T) {
 			name:       "validate help",
 			args:       []string{cmdValidate, flagHelp},
 			stdin:      nil,
-			wantCode:   exitUsage,
+			wantCode:   0,
 			wantStderr: "[files...]",
 		},
 		{

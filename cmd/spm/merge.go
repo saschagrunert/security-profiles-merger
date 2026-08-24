@@ -55,6 +55,10 @@ func runMerge(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	err := flags.Parse(args)
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+
 		return exitUsage
 	}
 
@@ -94,6 +98,14 @@ func validateMergeFlags(
 
 	if format != formatJSON && format != formatHuman {
 		_, _ = fmt.Fprintf(stderr, "error: unknown format %q (use json or human)\n", format)
+
+		return exitUsage
+	}
+
+	if profileType != typeSeccomp && profileType != typeAppArmor && profileType != typeLandlock {
+		_, _ = fmt.Fprintf(
+			stderr, "error: unknown type %q (use seccomp, apparmor, or landlock)\n", profileType,
+		)
 
 		return exitUsage
 	}

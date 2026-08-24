@@ -77,10 +77,10 @@ func restrictiveness(action specs.LinuxSeccompAction) int {
 		return levelTrap
 	case specs.ActErrno:
 		return levelErrno
-	case specs.ActTrace:
-		return levelTrace
 	case specs.ActNotify:
 		return levelNotify
+	case specs.ActTrace:
+		return levelTrace
 	case specs.ActLog:
 		return levelLog
 	case specs.ActAllow:

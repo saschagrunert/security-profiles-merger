@@ -404,6 +404,50 @@ func TestDiffSyscallArgs(t *testing.T) {
 	}
 }
 
+func TestDiffSyscallArgsSameIndexDifferentValue(t *testing.T) {
+	t.Parallel()
+
+	left := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 10, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 5, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+	right := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Syscalls: []specs.LinuxSyscall{
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 5, Op: specs.OpEqualTo}},
+			},
+			{
+				Names:  []string{syscallRead},
+				Action: specs.ActAllow,
+				Args:   []specs.LinuxSeccompArg{{Index: 0, Value: 10, Op: specs.OpEqualTo}},
+			},
+		},
+	}
+
+	diff, err := seccomp.Diff(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !diff.Equal {
+		t.Error("expected equal profiles after sorting")
+	}
+}
+
 func TestDiffDefaultErrnoRetNilVsSet(t *testing.T) {
 	t.Parallel()
 
