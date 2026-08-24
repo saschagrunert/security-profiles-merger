@@ -376,6 +376,56 @@ func TestValidateStrictAllKnownFlags(t *testing.T) {
 	}
 }
 
+func TestValidateStrictDuplicateArch(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Architectures: []specs.Arch{
+			specs.ArchX86_64, specs.ArchARM, specs.ArchX86_64,
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate architecture")
+	}
+
+	if !errors.Is(err, seccomp.ErrDuplicateArch) {
+		t.Errorf("expected ErrDuplicateArch, got: %v", err)
+	}
+
+	if strings.Count(err.Error(), "duplicate architecture") != 1 {
+		t.Errorf("expected exactly one duplicate report, got: %v", err)
+	}
+}
+
+func TestValidateStrictDuplicateFlag(t *testing.T) {
+	t.Parallel()
+
+	profile := &specs.LinuxSeccomp{
+		DefaultAction: specs.ActErrno,
+		Flags: []specs.LinuxSeccompFlag{
+			specs.LinuxSeccompFlagLog,
+			specs.LinuxSeccompFlagSpecAllow,
+			specs.LinuxSeccompFlagLog,
+		},
+	}
+
+	err := seccomp.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for duplicate flag")
+	}
+
+	if !errors.Is(err, seccomp.ErrDuplicateFlag) {
+		t.Errorf("expected ErrDuplicateFlag, got: %v", err)
+	}
+
+	if strings.Count(err.Error(), "duplicate seccomp flag") != 1 {
+		t.Errorf("expected exactly one duplicate report, got: %v", err)
+	}
+}
+
 func TestValidateStrictUnknownArgOperator(t *testing.T) {
 	t.Parallel()
 

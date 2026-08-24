@@ -47,9 +47,15 @@ var (
 	// ErrUnknownArch is returned when a profile contains an unrecognized
 	// architecture.
 	ErrUnknownArch = errors.New("unknown architecture")
+	// ErrDuplicateArch is returned when the same architecture appears
+	// more than once.
+	ErrDuplicateArch = errors.New("duplicate architecture")
 	// ErrUnknownFlag is returned when a profile contains an unrecognized
 	// seccomp flag.
 	ErrUnknownFlag = errors.New("unknown seccomp flag")
+	// ErrDuplicateFlag is returned when the same flag appears more than
+	// once.
+	ErrDuplicateFlag = errors.New("duplicate seccomp flag")
 )
 
 // Validate checks that a seccomp profile contains only known actions.
@@ -123,7 +129,17 @@ func ValidateStrict(profile *specs.LinuxSeccomp) error {
 		errs = append(errs, err)
 	}
 
+	err = validateDuplicateArchitectures(profile.Architectures)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	err = validateFlags(profile.Flags)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDuplicateFlags(profile.Flags)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -226,6 +242,42 @@ func validateFlags(flags []specs.LinuxSeccompFlag) error {
 			errs = append(errs, fmt.Errorf(
 				"flag: %w %q", ErrUnknownFlag, flag,
 			))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validateDuplicateArchitectures(archs []specs.Arch) error {
+	seen := make(map[specs.Arch]struct{}, len(archs))
+
+	var errs []error
+
+	for _, arch := range archs {
+		if _, ok := seen[arch]; ok {
+			errs = append(errs, fmt.Errorf(
+				"architecture: %w %q", ErrDuplicateArch, arch,
+			))
+		} else {
+			seen[arch] = struct{}{}
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validateDuplicateFlags(flags []specs.LinuxSeccompFlag) error {
+	seen := make(map[specs.LinuxSeccompFlag]struct{}, len(flags))
+
+	var errs []error
+
+	for _, flag := range flags {
+		if _, ok := seen[flag]; ok {
+			errs = append(errs, fmt.Errorf(
+				"flag: %w %q", ErrDuplicateFlag, flag,
+			))
+		} else {
+			seen[flag] = struct{}{}
 		}
 	}
 

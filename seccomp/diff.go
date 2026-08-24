@@ -292,8 +292,8 @@ func buildSyscallMap(
 			result[name] = append(result[name], SyscallEntry{
 				Name:     name,
 				Action:   syscall.Action,
-				ErrnoRet: syscall.ErrnoRet,
-				Args:     syscall.Args,
+				ErrnoRet: merge.ClonePtr(syscall.ErrnoRet),
+				Args:     slices.Clone(syscall.Args),
 			})
 		}
 	}
@@ -319,6 +319,9 @@ func equalSyscallEntrySlices(left, right []SyscallEntry) bool {
 	if len(left) != len(right) {
 		return false
 	}
+
+	left = slices.Clone(left)
+	right = slices.Clone(right)
 
 	sortSyscallEntries(left)
 	sortSyscallEntries(right)
