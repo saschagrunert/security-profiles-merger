@@ -5,15 +5,15 @@ dependencies:
       - path: Makefile
         match: ^GOLANGCI_LINT_VERSION
       - path: .github/workflows/ci.yml
-        match: "version: v"
+        match: "^\\s+version: v"
 
   - name: syft
     version: 1.51.0
     refPaths:
       - path: .github/workflows/ci.yml
-        match: "syft/"
+        match: "syft-version: v"
       - path: .github/workflows/release.yml
-        match: "syft/"
+        match: "syft-version: v"
 
   - name: mdtoc
     version: 1.4.0
