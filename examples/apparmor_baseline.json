@@ -1,0 +1,21 @@
+{
+  "executable": {
+    "allowedExecutables": ["/usr/bin/bash", "/usr/bin/cat"],
+    "allowedLibraries": ["/usr/lib/libc.so"]
+  },
+  "filesystem": {
+    "readOnlyPaths": ["/etc/config", "/etc/hostname"],
+    "writeOnlyPaths": ["/var/log/app.log"],
+    "readWritePaths": ["/tmp"]
+  },
+  "network": {
+    "allowRaw": false,
+    "allowedProtocols": {
+      "allowTcp": true,
+      "allowUdp": false
+    }
+  },
+  "capability": {
+    "allowedCapabilities": ["NET_BIND_SERVICE", "CHOWN"]
+  }
+}

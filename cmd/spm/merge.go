@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/saschagrunert/security-profiles-merger/apparmor"
 	"github.com/saschagrunert/security-profiles-merger/landlock"
@@ -57,26 +58,9 @@ func runMerge(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	if *profileType == "" || *strategy == "" {
-		_, _ = fmt.Fprintln(stderr, "error: --type and --strategy are required")
-
-		flags.PrintDefaults()
-
-		return exitUsage
-	}
-
-	if *strategy != strategyIntersect && *strategy != strategyUnion {
-		_, _ = fmt.Fprintf(
-			stderr, "error: unknown strategy %q (use intersect or union)\n", *strategy,
-		)
-
-		return exitUsage
-	}
-
-	if *format != formatJSON && *format != formatHuman {
-		_, _ = fmt.Fprintf(stderr, "error: unknown format %q (use json or human)\n", *format)
-
-		return exitUsage
+	code := validateMergeFlags(*profileType, *strategy, *format, flags, stderr)
+	if code != 0 {
+		return code
 	}
 
 	data, err := readInputs(flags.Args(), stdin)
@@ -87,6 +71,34 @@ func runMerge(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	return dispatchMerge(data, *profileType, *strategy, *format, stdout, stderr)
+}
+
+func validateMergeFlags(
+	profileType, strategy, format string, flags *flag.FlagSet, stderr io.Writer,
+) int {
+	if profileType == "" || strategy == "" {
+		_, _ = fmt.Fprintln(stderr, "error: --type and --strategy are required")
+
+		flags.PrintDefaults()
+
+		return exitUsage
+	}
+
+	if strategy != strategyIntersect && strategy != strategyUnion {
+		_, _ = fmt.Fprintf(
+			stderr, "error: unknown strategy %q (use intersect or union)\n", strategy,
+		)
+
+		return exitUsage
+	}
+
+	if format != formatJSON && format != formatHuman {
+		_, _ = fmt.Fprintf(stderr, "error: unknown format %q (use json or human)\n", format)
+
+		return exitUsage
+	}
+
+	return 0
 }
 
 func dispatchMerge(
@@ -185,6 +197,8 @@ func readInputs(paths []string, stdin io.Reader) ([][]byte, error) {
 
 			continue
 		}
+
+		path = filepath.Clean(path)
 
 		info, err := os.Stat(path)
 		if err != nil {

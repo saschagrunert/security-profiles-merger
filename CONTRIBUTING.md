@@ -22,6 +22,23 @@ We have full documentation on how to get started contributing here:
 - [Contributor Cheat Sheet](https://k8s.dev/cheatsheet) - Common resources for
   existing developers
 
+## Architecture
+
+The codebase is organized in three layers:
+
+- `internal/merge/` contains generic merge primitives (`Fold`, `IntersectSlice`,
+  `UnionSlice`, `DiffSlice`) that work with any comparable type. All profile
+  packages build on these primitives.
+- `seccomp/`, `apparmor/`, `landlock/` each expose the same public API surface:
+  `Intersect`, `Union`, `Validate`, `ValidateStrict`, `Diff`, `FormatDiff`, and
+  `FormatProfile`. Each package defines its own types (seccomp uses OCI
+  runtime-spec types, apparmor and landlock define their own) and implements
+  profile-specific normalization, deduplication, and merge logic on top of
+  `internal/merge/`.
+- `cmd/spm/` is a thin CLI layer that wires the packages together using Go
+  generics. It uses the standard library `flag` package with manual subcommand
+  dispatch.
+
 ## Local Development
 
 ```sh

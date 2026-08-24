@@ -1,0 +1,25 @@
+{
+  "handledAccessFs": ["read_file", "read_dir", "write_file", "execute"],
+  "handledAccessNet": ["bind_tcp", "connect_tcp"],
+  "scoped": ["abstract_unix_socket", "signal"],
+  "pathRules": [
+    {
+      "path": "/etc",
+      "accessFs": ["read_file", "read_dir"]
+    },
+    {
+      "path": "/var/data",
+      "accessFs": ["read_file", "write_file", "read_dir"]
+    }
+  ],
+  "netRules": [
+    {
+      "port": 443,
+      "accessNet": ["connect_tcp"]
+    },
+    {
+      "port": 8080,
+      "accessNet": ["bind_tcp"]
+    }
+  ]
+}
