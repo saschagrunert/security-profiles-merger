@@ -566,3 +566,39 @@ func TestValidateAllKnownCapabilities(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestValidateLowercaseCapabilities(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"sys_admin", "net_admin"},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateMixedCaseCapabilities(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"Sys_Admin", "net_ADMIN"},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

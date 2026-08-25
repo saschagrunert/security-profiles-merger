@@ -19,6 +19,7 @@ package apparmor
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
@@ -53,7 +54,7 @@ var (
 )
 
 func isKnownCapability(name string) bool {
-	switch name {
+	switch strings.ToUpper(name) {
 	case "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "FSETID",
 		"KILL", "SETGID", "SETUID", "SETPCAP", "LINUX_IMMUTABLE",
 		"NET_BIND_SERVICE", "NET_BROADCAST", "NET_ADMIN", "NET_RAW",
