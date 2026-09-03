@@ -54,7 +54,7 @@ func TestDiffErrors(t *testing.T) {
 			args:       []string{cmdDiff, seccompFile, seccompFile2},
 			stdin:      nil,
 			wantCode:   0,
-			wantStderr: "",
+			wantStderr: "auto-detected profile type: seccomp",
 		},
 		{
 			name:       "undetectable type",

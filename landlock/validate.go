@@ -19,6 +19,7 @@ package landlock
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/saschagrunert/security-profiles-merger/internal/merge"
 )
@@ -42,6 +43,10 @@ var (
 	// ErrDuplicateRight is returned when the same access right appears
 	// more than once in a handled set, rule, or scoped set.
 	ErrDuplicateRight = errors.New("duplicate access right")
+
+	// ErrRelativePath is returned when a path rule uses a relative path.
+	// Landlock requires absolute paths for filesystem rules.
+	ErrRelativePath = errors.New("relative path (must be absolute)")
 )
 
 // Validate checks that a Landlock profile contains only known access
@@ -269,6 +274,12 @@ func ValidateStrict(profile *Profile) error {
 	handledNet := toSet(profile.HandledAccessNet)
 
 	for idx, rule := range profile.PathRules {
+		if rule.Path != "" && !filepath.IsAbs(rule.Path) {
+			errs = append(errs, fmt.Errorf(
+				"PathRules[%d]: %q: %w", idx, rule.Path, ErrRelativePath,
+			))
+		}
+
 		e := validateHandled(
 			fmt.Sprintf("PathRules[%d]", idx), rule.AccessFS, handledFS,
 		)

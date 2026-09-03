@@ -41,6 +41,7 @@ import "github.com/saschagrunert/security-profiles-merger/seccomp"
 | `Union` | Merge profiles via union (least restrictive wins) |
 | `IntersectSyscalls` | Intersect two bare syscall slices without a DefaultAction |
 | `UnionSyscalls` | Union two bare syscall slices without a DefaultAction |
+| `DiffSyscalls` | Diff two bare syscall slices, returning added/removed/changed |
 | `MoreRestrictive` | Return the more restrictive of two seccomp actions |
 | `LessRestrictive` | Return the less restrictive of two seccomp actions |
 | `Validate` | Check for known actions and non-empty syscall names |
@@ -171,7 +172,7 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 | `Intersect` | Merge via intersection; handled sets unioned, rules intersected |
 | `Union` | Merge via union; handled sets intersected, rules unioned |
 | `Validate` | Check for known rights, empty paths, and duplicate rules |
-| `ValidateStrict` | All Validate checks plus unhandled-right detection |
+| `ValidateStrict` | All Validate checks plus unhandled-right and relative path detection |
 | `FormatProfile` | Human-readable representation of a Landlock profile |
 | `Diff` | Structured diff between two profiles |
 | `FormatDiff` | Human-readable representation of a profile diff |
@@ -183,7 +184,7 @@ for full signatures and documentation.
 
 Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrUnknownRight`,
 `ErrDuplicateRule`, `ErrEmptyPath`, `ErrUnhandledRight`, `ErrDuplicateRight`,
-etc.) are documented in the
+`ErrRelativePath`, etc.) are documented in the
 [package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock#pkg-variables).
 
 ### Types
