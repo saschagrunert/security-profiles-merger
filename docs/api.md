@@ -8,14 +8,14 @@
   - [Merge semantics](#merge-semantics)
 - [apparmor](#apparmor)
   - [Functions](#functions-1)
-  - [Errors](#errors-1)
   - [Types](#types-1)
+  - [Errors](#errors-1)
   - [Nil vs empty semantics](#nil-vs-empty-semantics)
   - [Filesystem merge](#filesystem-merge)
 - [landlock](#landlock)
   - [Functions](#functions-2)
-  - [Errors](#errors-2)
   - [Types](#types-2)
+  - [Errors](#errors-2)
   - [Handled access semantics](#handled-access-semantics)
   - [IPC scoping](#ipc-scoping)
   - [Path and network rules](#path-and-network-rules)
@@ -122,12 +122,6 @@ import "github.com/saschagrunert/security-profiles-merger/apparmor"
 See [pkg.go.dev](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor)
 for full signatures and documentation.
 
-### Errors
-
-Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrDuplicatePath`,
-`ErrUnknownCapability`, `ErrDuplicateExecutablePath`, etc.) are documented
-in the [package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor#pkg-variables).
-
 ### Types
 
 Core types (`Profile`, `CapabilityRules`, `ExecutableRules`, `FilesystemRules`,
@@ -138,6 +132,12 @@ documented in the
 
 `Profile`, `ExecutableRules`, `FilesystemRules`, `NetworkRules`, and
 `CapabilityRules` implement `fmt.Stringer` for human-readable formatting.
+
+### Errors
+
+Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrDuplicatePath`,
+`ErrUnknownCapability`, `ErrDuplicateExecutablePath`, etc.) are documented
+in the [package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/apparmor#pkg-variables).
 
 ### Nil vs empty semantics
 
@@ -180,13 +180,6 @@ import "github.com/saschagrunert/security-profiles-merger/landlock"
 See [pkg.go.dev](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock)
 for full signatures and documentation.
 
-### Errors
-
-Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrUnknownRight`,
-`ErrDuplicateRule`, `ErrEmptyPath`, `ErrUnhandledRight`, `ErrDuplicateRight`,
-`ErrRelativePath`, etc.) are documented in the
-[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock#pkg-variables).
-
 ### Types
 
 Core types (`Profile`, `FSAccessRight`, `NetAccessRight`, `ScopeRight`,
@@ -197,6 +190,13 @@ documented in the
 
 `Profile`, `PathRule`, and `NetRule` implement `fmt.Stringer` for human-readable
 formatting.
+
+### Errors
+
+Sentinel errors (`ErrNoProfiles`, `ErrNilProfile`, `ErrUnknownRight`,
+`ErrDuplicateRule`, `ErrEmptyPath`, `ErrUnhandledRight`, `ErrDuplicateRight`,
+`ErrRelativePath`, etc.) are documented in the
+[package reference](https://pkg.go.dev/github.com/saschagrunert/security-profiles-merger/landlock#pkg-variables).
 
 ### Handled access semantics
 

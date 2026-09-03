@@ -7,4 +7,7 @@ as follows:
 1. All [OWNERS](OWNERS) must LGTM this release
 1. An OWNER runs `git tag -s $VERSION` and inserts the changelog, then pushes
    the tag with `git push origin $VERSION`
+1. Pushing the tag triggers a GitHub Actions workflow that runs goreleaser to
+   build binaries, generate cosign-signed checksums, SBOMs (via syft), and
+   build provenance attestations
 1. The release issue is closed
