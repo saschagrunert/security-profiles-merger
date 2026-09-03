@@ -1028,3 +1028,80 @@ func TestDiffDefaultActionKillEquivalence(t *testing.T) {
 		t.Error("expected no DefaultAction diff")
 	}
 }
+
+func TestDiffSyscallsNil(t *testing.T) {
+	t.Parallel()
+
+	result := seccomp.DiffSyscalls(nil, nil)
+	if result != nil {
+		t.Errorf("expected nil for empty-vs-empty diff, got %v", result)
+	}
+}
+
+func TestDiffSyscallsEqual(t *testing.T) {
+	t.Parallel()
+
+	list := []specs.LinuxSyscall{{
+		Names:  []string{"read"},
+		Action: specs.ActAllow,
+	}}
+
+	result := seccomp.DiffSyscalls(list, list)
+	if result != nil {
+		t.Errorf("expected nil for equal syscall lists, got %v", result)
+	}
+}
+
+func TestDiffSyscallsDiffers(t *testing.T) {
+	t.Parallel()
+
+	left := []specs.LinuxSyscall{{
+		Names:  []string{"read"},
+		Action: specs.ActAllow,
+	}}
+
+	right := []specs.LinuxSyscall{{
+		Names:  []string{"write"},
+		Action: specs.ActAllow,
+	}}
+
+	result := seccomp.DiffSyscalls(left, right)
+	if result == nil {
+		t.Fatal("expected non-nil diff for different syscall lists")
+	}
+
+	if len(result.Removed) != 1 || result.Removed[0].Name != "read" {
+		t.Errorf("removed = %v, want [read]", result.Removed)
+	}
+
+	if len(result.Added) != 1 || result.Added[0].Name != "write" {
+		t.Errorf("added = %v, want [write]", result.Added)
+	}
+}
+
+func TestDiffSyscallsChanged(t *testing.T) {
+	t.Parallel()
+
+	left := []specs.LinuxSyscall{{
+		Names:  []string{"read"},
+		Action: specs.ActAllow,
+	}}
+
+	right := []specs.LinuxSyscall{{
+		Names:  []string{"read"},
+		Action: specs.ActErrno,
+	}}
+
+	result := seccomp.DiffSyscalls(left, right)
+	if result == nil {
+		t.Fatal("expected non-nil diff for changed action")
+	}
+
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %v, want 1 entry", result.Changed)
+	}
+
+	if result.Changed[0].Name != "read" {
+		t.Errorf("changed name = %q, want read", result.Changed[0].Name)
+	}
+}

@@ -171,7 +171,11 @@ func writeValidated[T any](
 
 	switch format {
 	case formatHuman:
-		for _, str := range humanStrs {
+		for idx, str := range humanStrs {
+			if idx > 0 {
+				_, _ = fmt.Fprintln(stdout, "---")
+			}
+
 			_, _ = fmt.Fprintln(stdout, str)
 		}
 	default:

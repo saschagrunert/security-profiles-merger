@@ -585,6 +585,28 @@ func TestValidateLowercaseCapabilities(t *testing.T) {
 	}
 }
 
+func TestValidateDuplicateCapabilityCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	profile := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"NET_ADMIN", "net_admin"},
+		},
+	}
+
+	err := apparmor.Validate(profile)
+	if err == nil {
+		t.Fatal("expected error for case-variant duplicate capability")
+	}
+
+	if !errors.Is(err, apparmor.ErrDuplicateCapability) {
+		t.Errorf("expected ErrDuplicateCapability, got: %v", err)
+	}
+}
+
 func TestValidateMixedCaseCapabilities(t *testing.T) {
 	t.Parallel()
 

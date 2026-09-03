@@ -432,6 +432,50 @@ func TestValidateStrictCollectsAllErrors(t *testing.T) {
 	}
 }
 
+func TestValidateStrictRelativePath(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path:     "relative/path",
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+
+	if !errors.Is(err, landlock.ErrRelativePath) {
+		t.Errorf("expected ErrRelativePath, got: %v", err)
+	}
+}
+
+func TestValidateStrictAbsolutePathValid(t *testing.T) {
+	t.Parallel()
+
+	profile := &landlock.Profile{
+		HandledAccessFS:  []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		HandledAccessNet: nil,
+		Scoped:           nil,
+		PathRules: []landlock.PathRule{{
+			Path:     "/absolute/path",
+			AccessFS: []landlock.FSAccessRight{landlock.FSAccessReadFile},
+		}},
+		NetRules: nil,
+	}
+
+	err := landlock.ValidateStrict(profile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateAllKnownFSRights(t *testing.T) {
 	t.Parallel()
 

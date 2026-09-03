@@ -640,6 +640,34 @@ func TestMergeOutputFlag(t *testing.T) {
 	}
 }
 
+func TestMergeOutputFilePermissions(t *testing.T) {
+	t.Parallel()
+
+	file := writeTemp(t, seccompJSON(t, testSyscallRead))
+	outFile := filepath.Join(t.TempDir(), "output.json")
+
+	code, _, _ := runCapture(t, []string{
+		cmdMerge, flagType, typeSeccomp,
+		flagStrategy, strategyIntersect,
+		"--output", outFile,
+		file,
+	}, nil)
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	info, err := os.Stat(outFile)
+	if err != nil {
+		t.Fatalf("stat output file: %v", err)
+	}
+
+	const wantPerm = os.FileMode(0o600)
+	if got := info.Mode().Perm(); got != wantPerm {
+		t.Errorf("output file permissions = %o, want %o", got, wantPerm)
+	}
+}
+
 func TestMergeAutoDetectStdin(t *testing.T) {
 	t.Parallel()
 

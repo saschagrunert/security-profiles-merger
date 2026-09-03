@@ -402,6 +402,10 @@ func TestValidateMultipleProfilesHumanFormat(t *testing.T) {
 	if !strings.Contains(stdout, "Profile{") {
 		t.Errorf("expected human-readable output, got: %s", stdout)
 	}
+
+	if !strings.Contains(stdout, "---") {
+		t.Errorf("expected --- separator between profiles, got: %s", stdout)
+	}
 }
 
 func TestValidateSeccompStrict(t *testing.T) {

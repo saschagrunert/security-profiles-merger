@@ -31,7 +31,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.13.1
+          version: v2.13.2
 
   test:
     runs-on: ubuntu-latest
@@ -60,7 +60,7 @@ jobs:
           grep -rn '^func Fuzz' --include='*_test.go' . \
             | sed 's|^\./||' \
             | while IFS=: read -r file _ line; do
-                fn=$(echo "$line" | grep -oP 'Fuzz\w+')
+                fn=$(echo "$line" | grep -oE 'Fuzz[A-Za-z0-9_]+')
                 dir=$(dirname "$file")
                 echo "$dir $fn"
               done > "$tmp"
@@ -195,7 +195,7 @@ jobs:
           go-version-file: go.mod
       - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
-          syft-version: v1.51.0
+          syft-version: v1.51.1
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser

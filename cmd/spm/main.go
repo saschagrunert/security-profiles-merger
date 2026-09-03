@@ -105,7 +105,13 @@ func openOutput(
 		return defaultWriter, func() {}, 0
 	}
 
-	file, err := os.Create(filepath.Clean(path))
+	const ownerReadWrite = 0o600
+
+	file, err := os.OpenFile(
+		filepath.Clean(path),
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+		ownerReadWrite,
+	)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: creating output file: %v\n", err)
 
@@ -162,11 +168,16 @@ func resolveProfileType(
 
 	if *profileType == "" {
 		_, _ = fmt.Fprintln(
-			stderr, "error: could not detect profile type, use --type",
+			stderr,
+			"error: could not detect profile type from input, use --type",
 		)
 
 		return exitUsage
 	}
+
+	_, _ = fmt.Fprintf(
+		stderr, "auto-detected profile type: %s\n", *profileType,
+	)
 
 	return 0
 }

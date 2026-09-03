@@ -160,6 +160,38 @@ func TestIntersectCapabilities(t *testing.T) {
 	}
 }
 
+func TestIntersectCapabilitiesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"NET_ADMIN", "SYS_TIME"},
+		},
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"net_admin", "CHOWN"},
+		},
+	}
+
+	result, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{capNetAdmin}
+	if !slices.Equal(result.Capabilities.AllowedCapabilities, want) {
+		t.Errorf("capabilities = %v, want %v", result.Capabilities.AllowedCapabilities, want)
+	}
+}
+
 func TestUnionCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -187,6 +219,109 @@ func TestUnionCapabilities(t *testing.T) {
 	want := []string{capNetAdmin, capSysTime}
 	if !slices.Equal(result.Capabilities.AllowedCapabilities, want) {
 		t.Errorf("capabilities = %v, want %v", result.Capabilities.AllowedCapabilities, want)
+	}
+}
+
+func TestUnionCapabilitiesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"net_admin"},
+		},
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"NET_ADMIN", capSysTime},
+		},
+	}
+
+	result, err := apparmor.Union(left, right)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{capNetAdmin, capSysTime}
+	if !slices.Equal(result.Capabilities.AllowedCapabilities, want) {
+		t.Errorf("capabilities = %v, want %v", result.Capabilities.AllowedCapabilities, want)
+	}
+}
+
+func TestCapabilityCaseRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	left := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"sys_admin", "net_admin"},
+		},
+	}
+
+	right := &apparmor.Profile{
+		Executable: nil,
+		Filesystem: nil,
+		Network:    nil,
+		Capabilities: &apparmor.CapabilityRules{
+			AllowedCapabilities: []string{"net_admin", "sys_ptrace"},
+		},
+	}
+
+	err := apparmor.Validate(left)
+	if err != nil {
+		t.Fatalf("validate left: %v", err)
+	}
+
+	err = apparmor.Validate(right)
+	if err != nil {
+		t.Fatalf("validate right: %v", err)
+	}
+
+	intersected, err := apparmor.Intersect(left, right)
+	if err != nil {
+		t.Fatalf("intersect: %v", err)
+	}
+
+	wantIntersect := []string{capNetAdmin}
+	if !slices.Equal(intersected.Capabilities.AllowedCapabilities, wantIntersect) {
+		t.Errorf(
+			"intersect capabilities = %v, want %v",
+			intersected.Capabilities.AllowedCapabilities, wantIntersect,
+		)
+	}
+
+	unioned, err := apparmor.Union(left, right)
+	if err != nil {
+		t.Fatalf("union: %v", err)
+	}
+
+	wantUnion := []string{capNetAdmin, "SYS_ADMIN", capSysPtrace}
+	if !slices.Equal(unioned.Capabilities.AllowedCapabilities, wantUnion) {
+		t.Errorf(
+			"union capabilities = %v, want %v",
+			unioned.Capabilities.AllowedCapabilities, wantUnion,
+		)
+	}
+
+	diff, err := apparmor.Diff(intersected, unioned)
+	if err != nil {
+		t.Fatalf("diff: %v", err)
+	}
+
+	if diff == nil {
+		t.Fatal("expected non-nil diff")
+	}
+
+	if diff.Capabilities == nil {
+		t.Fatal("expected capabilities diff")
 	}
 }
 

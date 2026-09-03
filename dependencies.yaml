@@ -1,6 +1,6 @@
 dependencies:
   - name: golangci-lint
-    version: 2.13.1
+    version: 2.13.2
     refPaths:
       - path: Makefile
         match: ^GOLANGCI_LINT_VERSION
@@ -8,7 +8,7 @@ dependencies:
         match: "^\\s+version: v"
 
   - name: syft
-    version: 1.51.0
+    version: 1.51.1
     refPaths:
       - path: .github/workflows/ci.yml
         match: "syft-version: v"

@@ -1,7 +1,7 @@
 GO ?= go
 FUZZTIME ?= 30s
 
-GOLANGCI_LINT_VERSION = 2.13.1
+GOLANGCI_LINT_VERSION = 2.13.2
 GOVULNCHECK_VERSION = v1.7.0
 MDTOC_VERSION = v1.4.0
 ZEITGEIST_VERSION = v0.8.0
@@ -21,8 +21,7 @@ OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 COLOR := \033[36m
 NOCOLOR := \033[0m
 
-PACKAGES := $(shell $(GO) list ./... | grep -v /internal/)
-ALL_PACKAGES := $(shell $(GO) list ./...)
+PACKAGES := $(shell $(GO) list ./...)
 
 .PHONY: all
 all: build lint test ## Build, lint, and test the project
@@ -70,7 +69,7 @@ fuzz: ## Run all fuzz tests (use FUZZTIME to adjust, default 30s)
 
 .PHONY: bench
 bench: ## Run benchmarks
-	@for pkg in $(ALL_PACKAGES); do \
+	@for pkg in $(PACKAGES); do \
 		$(GO) test -bench=. -benchmem -count=5 -run='^$$' $$pkg; \
 	done
 
