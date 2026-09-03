@@ -42,16 +42,20 @@ The codebase is organized in three layers:
 ## Local Development
 
 ```sh
-make                    # build, lint, and test (default target)
-make build              # build the spm binary (static)
-make test               # run tests with race detection and coverage
-make lint               # run golangci-lint
-make fuzz               # run all fuzz tests (default 30s, set FUZZTIME to adjust)
-make bench              # run benchmarks
-make verify-tidy        # verify go.mod is tidy
-make verify-mdtoc       # verify table of contents in markdown files
+make                     # build, lint, and test (default target)
+make help                # display available targets
+make build               # build the spm binary (static)
+make test                # run tests with race detection and coverage
+make lint                # run golangci-lint
+make fuzz                # run all fuzz tests (default 30s, set FUZZTIME to adjust)
+make bench               # run benchmarks
+make verify-coverage     # verify test coverage meets threshold (default 90%)
+make verify-tidy         # verify go.mod is tidy
+make verify-mdtoc        # verify table of contents in markdown files
 make verify-dependencies # verify external dependencies
-make govulncheck        # run govulncheck
+make govulncheck         # run govulncheck
+make tidy                # run go mod tidy
+make clean               # remove build artifacts
 ```
 
 ## Mentorship
